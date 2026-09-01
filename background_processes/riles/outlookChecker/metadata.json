@@ -1,0 +1,9 @@
+{
+  "id": "outlookChecker",
+  "name": "outlookChecker",
+  "description": "Lee correos y guarda parametros en base de datos ",
+  "category": "riles",
+  "version": "1.0.0",
+  "entry_point": "worker.py",
+  "enabled": false
+}

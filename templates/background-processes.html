@@ -1,0 +1,243 @@
+{% extends "base.html" %}
+{% block extra_css %}
+  <link rel="stylesheet" href="{{ url_for('static', path='style/background_processes/page.css') }}">
+{% endblock %}
+{% block content %}
+<div class="automatizaciones-container">
+  <h1>{{ titulo }}</h1>
+  <div class="categoria-box">
+    <ul>
+      {% for clave, proceso in procesos.items() %}
+      <li class="proceso-item" data-id="{{ proceso.metadata.id }}" style="cursor: pointer;">
+        <div class="proceso-info">
+          <div class="proceso-header">
+            <strong>{{ proceso.metadata.name }}</strong>
+          </div>
+          {% if proceso.metadata.description %}
+          <p class="desc">{{ proceso.metadata.description }}</p>
+          {% endif %}
+          <div class="badges">
+            <span class="badge badge-version">v{{ proceso.metadata.version }}</span>
+            <span class="badge badge-categoria">{{ proceso.metadata.category }}</span>
+            <span class="badge badge-status" id="badge-{{ proceso.metadata.id }}">
+              {% if proceso.metadata.enabled %}Activo{% else %}Inactivo{% endif %}
+            </span>
+          </div>
+        </div>
+
+        <div class="proceso-control">
+          <label class="switch">
+            <input type="checkbox" class="toggle-process" data-id="{{ proceso.metadata.id }}" {% if proceso.metadata.enabled %}checked{% endif %}>
+            <span class="slider round"></span>
+          </label>
+        </div>
+      </li>
+    {% endfor %}
+    </ul>
+    <div class="test">
+      <p>Selecciona un proceso para ver y gestionar sus horarios.</p>
+    </div>
+  </div>
+</div>
+
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  const switches = document.querySelectorAll(".toggle-process");
+  const procesoInfos = document.querySelectorAll(".proceso-info");
+  const testContainer = document.querySelector(".test");
+
+  // Toggle de activacion/desactivacion del proceso
+  switches.forEach(checkbox => {
+    checkbox.addEventListener("change", async (event) => {
+      event.stopPropagation(); // Evitar que dispare el click del li
+      const processId = event.target.getAttribute("data-id");
+      const isChecked = event.target.checked;
+      const badge = document.getElementById(`badge-${processId}`);
+
+      event.target.disabled = true;
+
+      try {
+        const response = await fetch(`/background-process-schedule/${processId}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" }
+        });
+
+        if (!response.ok) throw new Error("No se pudo actualizar el estado.");
+
+        const data = await response.json();
+        event.target.checked = data.enabled;
+        if (badge) {
+          badge.textContent = data.enabled ? "Activo" : "Inactivo";
+        }
+      } catch (error) {
+        console.error("Error al cambiar estado:", error);
+        event.target.checked = !isChecked;
+        alert("Ocurrio un error al cambiar el estado.");
+      } finally {
+        event.target.disabled = false;
+      }
+    });
+  });
+
+  // Event listener para cargar los horarios al hacer click en el proceso
+  procesoInfos.forEach(info => {
+    info.addEventListener("click", async () => {
+      // 2. Buscamos el li padre para obtener el data-id
+      const procesoItem = info.closest(".proceso-item");
+      const processId = procesoItem.getAttribute("data-id");
+
+      await cargarHorariosProcess(processId);
+    });
+  });
+
+  // Cargar lista de horarios y renderizar formulario
+  async function cargarHorariosProcess(processId) {
+    testContainer.innerHTML = "<p>Cargando horarios...</p>";
+    
+    try {
+      const response = await fetch(`/background-process-schedule/${processId}`);
+      if (!response.ok) throw new Error("Error al obtener horarios.");
+      const data = await response.json();
+
+      renderizarSeccionHorarios(data);
+    } catch (error) {
+      console.error(error);
+      testContainer.innerHTML = `<p style="color: red;">Error al cargar datos del proceso ${processId}</p>`;
+    }
+  }
+
+  // Render HTML de horarios + formulario de agregar/editar
+  function renderizarSeccionHorarios(procesoData) {
+    const processId = procesoData.id;
+    const schedules = procesoData.schedules || [];
+
+    let html = `
+      <div class="schedules-wrapper">
+        <h3>Horarios para: ${procesoData.name}</h3>
+        
+        <!-- Formulario para Agregar Nuevo Horario -->
+        <div class="add-schedule-box" style="margin-bottom: 20px;">
+          <h4>Agregar nuevo horario</h4>
+          <form id="form-add-schedule" data-id="${processId}">
+            <input type="number" id="new-hour" min="0" max="23" placeholder="Hora (0-23)" required>
+            <input type="number" id="new-minute" min="0" max="59" placeholder="Minuto (0-59)" required>
+            <button type="submit">Agregar Horario</button>
+          </form>
+        </div>
+
+        <!-- Lista de Horarios Existentes -->
+        <h4>Horarios Programados</h4>
+    `;
+
+    if (schedules.length === 0) {
+      html += `<p>No hay horarios configurados para este proceso.</p>`;
+    } else {
+      html += `<ul class="schedules-list" style="list-style: none; padding: 0;">`;
+      schedules.forEach(sched => {
+        const hh = String(sched.hour).padStart(2, '0');
+        const mm = String(sched.minute).padStart(2, '0');
+        html += `
+          <li class="schedule-item" style="margin-bottom: 10px; display: flex; gap: 10px; align-items: center;">
+            <form class="form-edit-schedule" data-schedule-id="${sched.id}" data-process-id="${processId}">
+              <input type="number" class="edit-hour" min="0" max="23" value="${sched.hour}" required> :
+              <input type="number" class="edit-minute" min="0" max="59" value="${sched.minute}" required>
+              <button type="submit">Guardar</button>
+            </form>
+            <button type="button" class="btn-delete-schedule" data-schedule-id="${sched.id}" data-process-id="${processId}">Eliminar</button>
+          </li>
+        `;
+      });
+      html += `</ul>`;
+    }
+
+    html += `</div>`;
+    testContainer.innerHTML = html;
+
+    // Asignar Event Listeners a los formularios generados
+    asignarEventosSchedules(processId);
+  }
+
+  function asignarEventosSchedules(processId) {
+    // Submit Agregar
+    const addForm = document.getElementById("form-add-schedule");
+    if (addForm) {
+      addForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const hour = parseInt(document.getElementById("new-hour").value);
+        const minute = parseInt(document.getElementById("new-minute").value);
+
+        try {
+          const res = await fetch(`/background-process-schedule/${processId}/add`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ hour, minute })
+          });
+
+          if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.detail || "Error al agregar horario");
+          }
+
+          // Recargar seccion tras guardar
+          await cargarHorariosProcess(processId);
+        } catch (err) {
+          alert(err.message);
+        }
+      });
+    }
+
+    // Submit Editar
+    const editForms = document.querySelectorAll(".form-edit-schedule");
+    editForms.forEach(form => {
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const scheduleId = form.getAttribute("data-schedule-id");
+        const hour = parseInt(form.querySelector(".edit-hour").value);
+        const minute = parseInt(form.querySelector(".edit-minute").value);
+
+        try {
+          const res = await fetch(`/background-process-schedule/item/${scheduleId}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ hour, minute })
+          });
+
+          if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.detail || "Error al actualizar horario");
+          }
+
+          await cargarHorariosProcess(processId);
+        } catch (err) {
+          alert(err.message);
+        }
+      });
+    });
+
+    // Delete
+    const deleteBtns = document.querySelectorAll(".btn-delete-schedule");
+    deleteBtns.forEach(btn => {
+      btn.addEventListener("click", async () => {
+        if (!confirm("¿Deseas eliminar este horario?")) return;
+        const scheduleId = btn.getAttribute("data-schedule-id");
+
+        try {
+          const res = await fetch(`/background-process-schedule/item/${scheduleId}`, {
+            method: "DELETE"
+          });
+
+          if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.detail || "Error al eliminar horario");
+          }
+
+          await cargarHorariosProcess(processId);
+        } catch (err) {
+          alert(err.message);
+        }
+      });
+    });
+  }
+});
+</script>
+{% endblock %}
