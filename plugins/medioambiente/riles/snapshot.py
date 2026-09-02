@@ -1,5 +1,5 @@
 import os
-from paths import ROOT_DIR
+from riles_config import BASE_DIR
 
 def mapear_directorio(ruta_raiz, archivo_salida=None):
   """Recorre la ruta raíz y subcarpetas, mostrando y guardando los archivos,
@@ -16,8 +16,6 @@ def mapear_directorio(ruta_raiz, archivo_salida=None):
     # Excluir la carpeta 'venv' modificando la lista de subdirectorios in-place
     if "venv" in subdirectorios:
       subdirectorios.remove("venv")
-    if ".git" in subdirectorios:
-          subdirectorios.remove(".git")
 
     # Calcular la profundidad para dar formato de árbol visual
     nivel = directorio_actual.replace(ruta_raiz_str, "").count(os.sep)
@@ -48,7 +46,7 @@ def mapear_directorio(ruta_raiz, archivo_salida=None):
 
 if __name__ == "__main__":
   # CONFIGURACIÓN:
-  CARPETA_RAIZ = ROOT_DIR
+  CARPETA_RAIZ = BASE_DIR
 
   # Nombre del archivo de texto donde se guardará el resultado (opcional)
   ARCHIVO_REPORTE = "mapa_archivos.txt"

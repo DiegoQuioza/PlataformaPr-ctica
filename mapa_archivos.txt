@@ -1,34 +1,98 @@
 📁 hola/
-  📄 bp_crawler.py
-  📄 bp_schedules.py
+  📄 .gitignore
   📄 codigo_consolidado.txt
   📄 main.py
-  📄 manual.md
   📄 mapa_archivos.txt
   📄 paths.py
   📄 pyproject.toml
   📄 readme.md
   📄 requirements.txt
-  📄 riles_data.db
-  📄 scheduler_service.py
   📄 snap.py
   📄 snapshot.py
-  📄 start.py
   📁 automations/
+  📁 core/
+    📄 bp_crawler.py
+    📄 plugin_manager.py
+    📄 scheduler_service.py
+    📁 __pycache__/
+      📄 bp_crawler.cpython-310.pyc
+      📄 plugin_manager.cpython-310.pyc
+      📄 scheduler_service.cpython-310.pyc
+      📄 __init__.cpython-310.pyc
+  📁 data/
+    📄 correos - FALSO.csv
+    📄 correos.csv
+    📄 correos.xlsx
+    📄 Locales.csv
+    📄 Mail_Local.xlsx
+    📄 processes_registry.db
+  📁 docs/
+    📁 Automatizaciones/
+    📁 Crear Automatizaciones/
+      📄 arquitectura de workers.md
+      📄 Creación de plugins.md
+      📄 Creación de procesos en segundo plano.md
+      📄 Creación Gestor de Workers.md
+      📄 Creador de Proyectos.md
+      📄 Rutas.md
+    📁 Diego/
+      📄 Arquitectura.md
+      📄 combinado.md
+      📄 mermaids.md
+      📄 Modelos de bases de datos (1).md
+      📄 Modelos de bases de datos.md
+      📄 ppt1.md
+      📄 proyecto.md
+    📁 General/
+      📄 Estructura del plugin.md
+      📄 manual.md
+      📄 Paginas importantes.md
+      📄 readme.md
+  📁 mi_proyecto.egg-info/
+    📄 dependency_links.txt
+    📄 PKG-INFO
+    📄 SOURCES.txt
+    📄 top_level.txt
+  📁 plugins/
     📁 generic/
       📄 mapa_archivos.txt
       📄 snapshot.py
+      📁 background_processes/
+        📁 proceso1/
+          📄 worker.py
+          📁 __pycache__/
+            📄 worker.cpython-310.pyc
+        📁 proceso2/
+          📄 config.py
+          📄 metadata.json
+          📄 worker.py
+          📁 modules/
+            📄 utils.py
+            📁 __pycache__/
+              📄 utils.cpython-310.pyc
+          📁 __pycache__/
+            📄 config.cpython-310.pyc
+            📄 worker.cpython-310.pyc
+        📁 riles/
       📁 __pycache__/
         📄 snapshot.cpython-310.pyc
     📁 medioambiente/
+      📄 medioambiente.py
+      📄 __init__.py
       📁 riles/
+        📄 codigo_consolidado.txt
+        📄 metadata.json
+        📄 riles.py
+        📄 riles_config.py
+        📄 snap.py
+        📄 snapshot.py
+        📄 __init__.py
         📁 automatizaciones/
           📁 Envio_correos/
-            📄 config.py
+            📄 envio_correos_config.py
             📄 main.py
             📄 sample.json
-            📄 snap.py
-            📄 snapshot.py
+            📄 __init__.py
             📁 data/
             📁 templates/
               📄 mail.css
@@ -39,9 +103,10 @@
               📄 main.cpython-310.pyc
           📁 lectorPdf/
             📄 codigo_consolidado.txt
-            📄 config.py
             📄 dataKeywords.json
             📄 labKeywords.json
+            📄 lector_pdf_config.py
+            📄 locales .xlsx
             📄 main.py
             📄 mapa_archivos.txt
             📄 projectTag.json
@@ -128,109 +193,76 @@
               📄 biodiversaReader.cpython-310.pyc
               📄 config.cpython-310.pyc
               📄 hidrolab_reader.cpython-310.pyc
+              📄 lector_pdf_config.cpython-310.pyc
               📄 main.cpython-310.pyc
               📄 merieux_reader.cpython-310.pyc
               📄 sgs_reader.cpython-310.pyc
-    📁 sostenibilidad/
-  📁 background_processes/
-    📁 proceso1/
-      📄 worker.py
-      📁 __pycache__/
-        📄 worker.cpython-310.pyc
-    📁 proceso2/
-      📄 config.py
-      📄 metadata.json
-      📄 worker.py
-      📁 modules/
-        📄 utils.py
-        📁 __pycache__/
-          📄 utils.cpython-310.pyc
-      📁 __pycache__/
-        📄 config.cpython-310.pyc
-        📄 worker.cpython-310.pyc
-    📁 riles/
-      📁 outlookChecker/
-        📄 config.py
-        📄 metadata.json
-        📄 worker.py
-        📁 downloads/
-          📄 00102717.pdf
-          📄 126349 Unimarc Coyhaique.pdf
-          📄 2. Afiche- Buenas prácticas Riles_compressed.pdf
-          📄 2026-0000027439-03032792INF_AGUA-C.pdf
-          📄 Afiche residuos UNIMARC.pdf
-          📄 Carta N°2301 CD Abril 2026 Unimarc Victoria.pdf
-          📄 Certificado N° 78.pdf
-          📄 CERTIFICADO UNIMARC N° 87 JULIO 202620260806_10241751.pdf
-          📄 CERTIFICADO UNIMARC N° 88 JULIO 202620260806_10264014.pdf
-          📄 PRODUCTOS NO AUTORIZADOS.pdf
-          📄 UNIMARC  COYHAIQUE (Autocontrol) 26-06-2026.pdf
-        📁 modules/
-          📄 outlook_agent.py
-          📁 __pycache__/
-            📄 outlook_agent.cpython-310.pyc
-        📁 __pycache__/
-          📄 config.cpython-310.pyc
-          📄 worker.cpython-310.pyc
-  📁 backups/
-    📄 riles backup.py
-  📁 databases/
-    📄 processes_registry.db
-    📄 riles_data.db
-  📁 docs/
-    📁 Automatizaciones/
-    📁 Crear Automatizaciones/
-      📄 arquitectura de workers.md
-      📄 Creación de plugins.md
-      📄 Creación de procesos en segundo plano.md
-      📄 Creación Gestor de Workers.md
-      📄 Creador de Proyectos.md
-      📄 Rutas.md
-    📁 Diego/
-      📄 Arquitectura.md
-      📄 combinado.md
-      📄 mermaids.md
-      📄 Modelos de bases de datos (1).md
-      📄 Modelos de bases de datos.md
-      📄 ppt1.md
-      📄 proyecto.md
-    📁 General/
-      📄 Estructura del plugin.md
-      📄 Paginas importantes.md
-      📄 readme.md
-  📁 mi_proyecto.egg-info/
-    📄 dependency_links.txt
-    📄 PKG-INFO
-    📄 SOURCES.txt
-    📄 top_level.txt
-  📁 routes/
-    📁 documentation/
-      📄 documentacion.py
-      📄 __init__.py
-      📁 __pycache__/
-        📄 documentacion.cpython-310.pyc
-        📄 __init__.cpython-310.pyc
-    📁 medioambiente/
-      📄 medioambiente.py
-      📄 __init__.py
-      📁 riles/
-        📄 riles.py
-        📄 __init__.py
+        📁 backgroundProcesses/
+          📁 outlookChecker/
+            📄 metadata.json
+            📄 outlook_config.py
+            📄 worker.py
+            📄 __init__.py
+            📁 downloads/
+              📄 00102717.pdf
+              📄 126349 Unimarc Coyhaique.pdf
+              📄 2. Afiche- Buenas prácticas Riles_compressed.pdf
+              📄 2026-0000027439-03032792INF_AGUA-C.pdf
+              📄 Afiche residuos UNIMARC.pdf
+              📄 Carta N°2301 CD Abril 2026 Unimarc Victoria.pdf
+              📄 Certificado N° 78.pdf
+              📄 CERTIFICADO UNIMARC N° 87 JULIO 202620260806_10241751.pdf
+              📄 CERTIFICADO UNIMARC N° 88 JULIO 202620260806_10264014.pdf
+              📄 PRODUCTOS NO AUTORIZADOS.pdf
+              📄 UNIMARC  COYHAIQUE (Autocontrol) 26-06-2026.pdf
+            📁 modules/
+              📄 outlook_agent.py
+              📁 __pycache__/
+                📄 outlook_agent.cpython-310.pyc
+            📁 __pycache__/
+              📄 config.cpython-310.pyc
+              📄 worker.cpython-310.pyc
+        📁 data/
+          📄 riles_data.db
+        📁 pages/
+          📄 inbox.html
+          📄 main.html
+          📄 paramlimits.html
+          📄 records.html
+          📄 sendmails.html
+          📄 uploadFiles.html
         📁 services/
           📄 database.py
+          📄 filtered_output.csv
           📄 inbox_service.py
+          📄 mails_service.py
           📄 models.py
-          📄 parameters.py
           📄 parameter_service.py
           📄 pdf_service.py
+          📄 prueba.xlsx
           📄 riles_service.py
           📄 schemas.py
+          📄 store_service.py
+          📄 transform_xlsx_service.py
           📁 __pycache__/
+            📄 database.cpython-310.pyc
+            📄 inbox_service.cpython-310.pyc
+            📄 mails_service.cpython-310.pyc
             📄 models.cpython-310.pyc
+            📄 parameter_service.cpython-310.pyc
             📄 pdf_service.cpython-310.pyc
             📄 riles_service.cpython-310.pyc
             📄 schemas.cpython-310.pyc
+            📄 store_service.cpython-310.pyc
+            📄 transform_xlsx_service.cpython-310.pyc
+        📁 static/
+          📄 main.css
+          📄 params.css
+          📄 records.css
+          📄 sendmail.css
+          📄 style.css
         📁 __pycache__/
+          📄 config.cpython-310.pyc
           📄 database.cpython-310.pyc
           📄 models.cpython-310.pyc
           📄 riles.cpython-310.pyc
@@ -240,6 +272,13 @@
         📄 medioambiente.cpython-310.pyc
         📄 __init__.cpython-310.pyc
     📁 sostenibilidad/
+  📁 routes/
+    📁 documentation/
+      📄 documentacion.py
+      📄 __init__.py
+      📁 __pycache__/
+        📄 documentacion.cpython-310.pyc
+        📄 __init__.cpython-310.pyc
   📁 static/
     📁 src/
       📄 a.png
@@ -265,6 +304,8 @@
       📁 riles/
         📄 main.css
         📄 params.css
+        📄 records.css
+        📄 sendmail.css
         📄 style.css
   📁 templates/
     📄 automatizaciones.html
@@ -279,8 +320,12 @@
       📄 inbox.html
       📄 main.html
       📄 paramlimits.html
+      📄 records.html
+      📄 sendmails.html
       📄 uploadFiles.html
-  📁 uploads/
+  📁 tests/
+    📄 importar.csv
+    📄 importar.xlsx
   📁 __pycache__/
     📄 bp_crawler.cpython-310.pyc
     📄 main.cpython-310.pyc

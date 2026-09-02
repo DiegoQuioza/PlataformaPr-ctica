@@ -4,12 +4,13 @@ ROOT_DIR = Path(__file__).resolve().parent
 
 
 # Directorio para Bases de datos
-DB_DIR = ROOT_DIR / "databases"
+DB_DIR = ROOT_DIR / "data"
 
 # Directorios principales del backend
 TEMPLATES_DIR = ROOT_DIR / "templates"
 STATIC_DIR = ROOT_DIR / "static"
 DOCS_DIR = ROOT_DIR / "docs"
+PLUGINS_DIR = ROOT_DIR / "plugins"
 
 AUTOMATIONS = ROOT_DIR / "automations"
 BACKGROUND_PROCESSES_DIR = ROOT_DIR / "background_processes"

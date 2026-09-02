@@ -1,1119 +1,10 @@
-=== TÍTULO: .gitignore ===
+=== TÍTULO: __init__.py ===
 
-.venv/
-venv/
-__pycache__/
-*.egg-info/
+from .riles import router
 
 ============================================================
 
-=== TÍTULO: main.py ===
-
-import os
-import sys
-# Garantizar que el directorio raíz 'hola' esté en el sys.path
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-if BASE_DIR not in sys.path:
-  sys.path.insert(0, BASE_DIR)
-
-import uvicorn
-from fastapi import FastAPI, Request, HTTPException
-from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
-from datetime import datetime
-
-# Librerías de Scheduler de procesos en segundo plano
-from contextlib import asynccontextmanager
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
-import asyncio
-
-# Importar rutas centralizadas desde paths.py
-from paths import TEMPLATES_DIR, STATIC_DIR, DB_DIR,PLUGINS_DIR
-
-# Importar módulos de endpoints
-# from routes.documentation import router as doc_router
-from core.plugin_manager import PluginManager
-
-
-from pydantic import BaseModel, Field
-
-# from functools import partialf
-from pytz import timezone # O usa zoneinfo en Python 3.9+
-
-# Importar funciones y modelos desde tu gestor bp_crawler
-from core.bp_crawler import (
-    get_background_proceses,
-    get_bp_schedule_by_id,
-    update_columna_orm,
-    add_schedule_to_process,
-    delete_schedule_to_process,
-    SessionLocal,
-    BackgroundProcessModel,
-    ProcessScheduleModel,
-    ExecutionStatus,
-    update_schedule_to_process
-)
-
-from core.scheduler_service import (
-    scheduler,
-    load_schedules_from_db,
-    register_single_job,
-    remove_single_job,
-)
-
-
-app = FastAPI(staticfiles=STATIC_DIR) # Ajusta según tu inicialización de templates/estáticos
-
-
-plugin_manager = PluginManager(app=app, plugins_dir=PLUGINS_DIR)
-plugin_manager.discover_and_load()
-
-# Configurar motor Jinja2 unificado que busca en /templates globales y en cada plugin
-templates = plugin_manager.get_jinja_templates(
-    global_templates_dir=TEMPLATES_DIR
-)
-
-# Estáticos globales opcionales
-if STATIC_DIR.exists():
-  app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
-
-
-# Imprimir resumen de inicialización en consola
-print("=" * 60)
-print(
-    f"🚀 [PLUGIN ENGINE] Carga finalizada. {len(plugin_manager.loaded_plugins)} routers integrados:"
-)
-for loaded in plugin_manager.loaded_plugins:
-  print(f"  ├─ {loaded}")
-print("=" * 60)
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-  # 1. Cargar la base de datos al scheduler al iniciar
-  load_schedules_from_db()
-
-  # 2. Iniciar el scheduler
-  scheduler.start()
-  print("Scheduler iniciado correctamente.")
-
-  yield
-
-  # 3. Apagar al cerrar FastAPI
-  scheduler.shutdown()
-  print("Scheduler detenido.")
-
-
-app = FastAPI(lifespan=lifespan)
-
-# Inicialización del servidor
-
-app = FastAPI(
-  title="Automatizaciones | Sostenibilidad",
-  lifespan=lifespan
-)
-
-# Incluir módulos de endpoints al backend
-
-# Montar recursos estáticos y plantillas usando paths.py
-templates = Jinja2Templates(directory=TEMPLATES_DIR)
-app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
-
-# Endpoint raíz principal
-@app.get("/")
-async def inicio(request: Request):
-  datos = {
-    "titulo": "Panel de Automatizaciones | Sostenibilidad"
-  }
-  return templates.TemplateResponse(
-    request=request,
-    name="index.html",
-    context=datos
-  )
-
-# # Endpoint global de automatizaciones (lee el arbol OpenAPI de toda la app)
-# @app.get("/automatizaciones")
-# def automatizaciones(request: Request):
-#   openapi = app.openapi()
-#   arbol = {}
-
-#   for path, methods in openapi["paths"].items():
-#     for method, info in methods.items():
-#       tags = info.get("tags", ["Sin categoría"])
-#       for tag in tags:
-#         arbol.setdefault(tag, []).append({
-#           "titulo": info.get("summary") or path,
-#           "descripcion": info.get("description"),
-#           "ruta": path,
-#           "metodo": method.upper()
-#         })
-  
-#   return templates.TemplateResponse(
-#     request, 
-#     name="automatizaciones.html", 
-#     context={"titulo": "Automatizaciones", "arbol": arbol}
-#   )
-
-# @app.get("/background-processes")
-# def background_proceses(request: Request):
-#   procesos = get_background_proceses()
-#   return templates.TemplateResponse(
-#     request,
-#     name = "background-processes.html",
-#     context={"titulo":"Procesos en segundo plano", "procesos":procesos}
-#   )
-
-# @app.get("/background-processes-all")
-# def all_background_proceses():
-#   procesos = get_background_proceses()
-#   return procesos
-
-# @app.get("/background-process-schedule/{process_id}")
-# def read_bp_schedule_by_id(process_id: str):
-#   resultado = get_bp_schedule_by_id(process_id)
-
-#   if "error" in resultado:
-#     raise HTTPException(status_code=404, detail=resultado["error"])
-
-#   return resultado
-
-# @app.post("/background-process-schedule/{process_id}")
-# def enable_or_disable_schedule_by_id(process_id: str):
-#   resultado = get_bp_schedule_by_id(process_id)
-
-#   if "error" in resultado:
-#     raise HTTPException(status_code=404, detail=resultado["error"])
-
-#   Actualstatus = resultado["enabled"]
-#   Newstatus = not Actualstatus
-#   update_columna_orm(process_id,Newstatus)
-
-#   return get_bp_schedule_by_id(process_id)
-
-# class ScheduleCreate(BaseModel):
-#   hour: int = Field(..., ge=0, le=23, description="Hora en formato 24h (0-23)")
-#   minute: int = Field(..., ge=0, le=59, description="Minuto (0-59)")
-
-
-# @app.post("/background-process-schedule/{process_id}/add")
-# def create_schedule_endpoint(process_id: str, schedule: ScheduleCreate):
-#   resultado = add_schedule_to_process(
-#       process_id=process_id, hour=schedule.hour, minute=schedule.minute
-#   )
-
-#   if "error" in resultado:
-#     raise HTTPException(status_code=400, detail=resultado["error"])
-
-#   db = SessionLocal()
-#   try:
-#     process = (
-#         db.query(BackgroundProcessModel)
-#         .filter(BackgroundProcessModel.id == process_id)
-#         .first()
-#     )
-#     sched = (
-#         db.query(ProcessScheduleModel)
-#         .filter(
-#             ProcessScheduleModel.process_id == process_id,
-#             ProcessScheduleModel.hour == schedule.hour,
-#             ProcessScheduleModel.minute == schedule.minute,
-#         )
-#         .first()
-#     )
-
-#     if process and sched and process.enabled:
-#       register_single_job(process, sched)
-#   finally:
-#     db.close()
-
-#   return resultado
-
-# @app.delete("/background-process-schedule/item/{scheduleId}")
-# def delete_schedule_endpoint(scheduleId: int):
-#   db = SessionLocal()
-#   process_id = None
-#   try:
-#     sched = (
-#         db.query(ProcessScheduleModel)
-#         .filter(ProcessScheduleModel.id == scheduleId)
-#         .first()
-#     )
-#     if sched:
-#       process_id = sched.process_id
-#   finally:
-#     db.close()
-
-#   delete_schedule_to_process(scheduleId)
-
-#   if process_id:
-#     remove_single_job(process_id, scheduleId)
-
-#   return {"message": "Horario eliminado correctamente"}
-
-# @app.put("/background-process-schedule/item/{scheduleId}")
-# def update_schedule_endpoint(scheduleId: int, schedule: ScheduleCreate):
-#   resultado = update_schedule_to_process(
-#       schedule_id=scheduleId, hour=schedule.hour, minute=schedule.minute
-#   )
-
-#   if "error" in resultado:
-#     raise HTTPException(status_code=400, detail=resultado["error"])
-
-#   return resultado
-
-if __name__ == "__main__":
-  uvicorn.run(
-    "main:app",
-    host="0.0.0.0",
-    port=8000,
-    reload=True
-  )
-
-============================================================
-
-=== TÍTULO: paths.py ===
-
-from pathlib import Path
-# Raíz absoluta del proyecto
-ROOT_DIR = Path(__file__).resolve().parent
-
-
-# Directorio para Bases de datos
-DB_DIR = ROOT_DIR / "data"
-
-# Directorios principales del backend
-TEMPLATES_DIR = ROOT_DIR / "templates"
-STATIC_DIR = ROOT_DIR / "static"
-DOCS_DIR = ROOT_DIR / "docs"
-PLUGINS_DIR = ROOT_DIR / "plugins"
-
-AUTOMATIONS = ROOT_DIR / "automations"
-BACKGROUND_PROCESSES_DIR = ROOT_DIR / "background_processes"
-MEDIOAMBIENTE_DIR = AUTOMATIONS / "medioambiente"
-SOSTENIBILIDAD_DIR = AUTOMATIONS / "sostenibilidad"
-
-def get_venv_command():
-  print(f'(Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned) ; (& "{ROOT_DIR}\\venv\Scripts\Activate.ps1")')
-
-============================================================
-
-=== TÍTULO: pyproject.toml ===
-
-[build-system]
-requires = ["setuptools>=61.0"]
-build-backend = "setuptools.build_meta"
-
-[project]
-name = "mi_proyecto"
-version = "0.1.0"
-
-[tool.setuptools]
-py-modules = ["paths"]
-
-[tool.setuptools.packages.find]
-where = ["."]
-
-[tool.setuptools.package-dir]
-"automations" = "automations"
-
-============================================================
-
-=== TÍTULO: snap.py ===
-
-import os
-
-def exportar_codigo_proyecto(directorio_origen=".", archivo_salida="codigo_consolidado.txt"):
-  # Carpetas y extensiones no deseadas que conviene ignorar
-  carpetas_ignoradas = {'.git', '__pycache__', '.venv', 'venv', '.vscode', '.idea', 'node_modules','mi_proyecto.egg-info'}
-  extensiones_ignoradas = {'.pyc', '.png', '.jpg', '.jpeg', '.gif', '.ico', '.exe', '.zip', '.pdf', '.db', '.sqlite', ".csv",".html",".css",".svg",".md"}
-
-  with open(archivo_salida, 'w', encoding='utf-8') as salida:
-    for raiz, carpetas, archivos in os.walk(directorio_origen):
-      # Excluir carpetas no deseadas del recorrido
-      carpetas[:] = [d for d in carpetas if d not in carpetas_ignoradas]
-
-      for nombre_archivo in sorted(archivos):
-        # Evitar leer el mismo archivo de salida generado
-        if nombre_archivo == os.path.basename(archivo_salida) or nombre_archivo == "mapa_archivos.txt":
-          continue
-
-        _, ext = os.path.splitext(nombre_archivo)
-        if ext.lower() in extensiones_ignoradas:
-          continue
-
-        ruta_completa = os.path.join(raiz, nombre_archivo)
-        ruta_relativa = os.path.relpath(ruta_completa, directorio_origen)
-
-        try:
-          with open(ruta_completa, 'r', encoding='utf-8') as f:
-            contenido_codigo = f.read()
-
-          # 1. TÍTULO
-          salida.write(f"=== TÍTULO: {ruta_relativa} ===\n\n")
-
-          # 2. CÓDIGO
-          salida.write(contenido_codigo)
-          salida.write("\n\n" + "=" * 60 + "\n\n")
-
-        except (UnicodeDecodeError, PermissionError):
-          # Omite archivos binarios o sin permisos de lectura
-          continue
-
-  print(f"Proceso finalizado. Archivo generado: {archivo_salida}")
-
-if __name__ == "__main__":
-  # Ejecuta la función en el directorio actual
-  exportar_codigo_proyecto()
-
-============================================================
-
-=== TÍTULO: snapshot.py ===
-
-import os
-from paths import ROOT_DIR
-
-def mapear_directorio(ruta_raiz, archivo_salida=None):
-  """Recorre la ruta raíz y subcarpetas, mostrando y guardando los archivos,
-
-  excluyendo la carpeta venv.
-  """
-  # Convertir a string por seguridad si viene como Path de pathlib
-  ruta_raiz_str = str(ruta_raiz)
-  print(f"\n[+] Mapeando la ruta: {ruta_raiz_str}\n")
-
-  resultado = []
-
-  for directorio_actual, subdirectorios, archivos in os.walk(ruta_raiz_str):
-    # Excluir la carpeta 'venv' modificando la lista de subdirectorios in-place
-    if "venv" in subdirectorios:
-      subdirectorios.remove("venv")
-    if ".git" in subdirectorios:
-          subdirectorios.remove(".git")
-
-    # Calcular la profundidad para dar formato de árbol visual
-    nivel = directorio_actual.replace(ruta_raiz_str, "").count(os.sep)
-    indentacion = "  " * nivel
-    carpeta_actual = os.path.basename(directorio_actual) or directorio_actual
-
-    # Agregar carpeta a la lista
-    linea_carpeta = f"{indentacion}📁 {carpeta_actual}/"
-    print(linea_carpeta)
-    resultado.append(linea_carpeta)
-
-    # Agregar archivos de la carpeta
-    for archivo in archivos:
-      indentacion_archivo = "  " * (nivel + 1)
-      linea_archivo = f"{indentacion_archivo}📄 {archivo}"
-      print(linea_archivo)
-      resultado.append(linea_archivo)
-
-  # Guardar en un archivo de texto si se especifica
-  if archivo_salida:
-    with open(archivo_salida, "w", encoding="utf-8") as f:
-      f.write("\n".join(resultado))
-    print(
-        f"\n[✔] ¡Mapeo completado con éxito! Guardado en: {archivo_salida}"
-    )
-  return(resultado)
-
-
-if __name__ == "__main__":
-  # CONFIGURACIÓN:
-  CARPETA_RAIZ = ROOT_DIR
-
-  # Nombre del archivo de texto donde se guardará el resultado (opcional)
-  ARCHIVO_REPORTE = "mapa_archivos.txt"
-
-  mapear_directorio(CARPETA_RAIZ, ARCHIVO_REPORTE)
-
-============================================================
-
-=== TÍTULO: core\bp_crawler.py ===
-
-import enum
-import importlib.util
-import json
-import sys
-from datetime import datetime
-from pathlib import Path
-from sqlalchemy import (
-  Column,
-  Integer,
-  String,
-  Boolean,
-  DateTime,
-  ForeignKey,
-  Enum,
-  CheckConstraint,
-  create_engine,
-)
-from sqlalchemy.orm import declarative_base, relationship, sessionmaker
-from paths import BACKGROUND_PROCESSES_DIR, DB_DIR
-
-# ------------------------------------------------------------------
-# 1. Configuración de la Base de Datos
-# ------------------------------------------------------------------
-PROCESSES_DB_PATH = DB_DIR / "processes_registry.db"
-DATABASE_URL = f"sqlite:///{PROCESSES_DB_PATH.as_posix()}"
-
-engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-Base = declarative_base()
-
-
-class ExecutionStatus(str, enum.Enum):
-  PENDING = "PENDING"
-  RUNNING = "RUNNING"
-  SUCCESS = "SUCCESS"
-  FAILED = "FAILED"
-
-class BackgroundProcessModel(Base):
-  __tablename__ = "background_processes"
-
-  id = Column(String(100), primary_key=True)
-  clave_modulo = Column(String(255), nullable=False)
-  name = Column(String(255), nullable=False)
-  description = Column(String(500), nullable=True)
-  category = Column(String(100), nullable=True)
-  version = Column(String(50), nullable=True)
-  enabled = Column(Boolean, default=False, nullable=False)
-  last_run = Column(DateTime, nullable=True)
-  updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
-
-  schedules = relationship(
-      "ProcessScheduleModel",
-      back_populates="process",
-      cascade="all, delete-orphan",
-  )
-
-
-class ProcessScheduleModel(Base):
-  __tablename__ = "process_schedules"
-
-  id = Column(Integer, primary_key=True, autoincrement=True)
-  process_id = Column(
-      String(100),
-      ForeignKey("background_processes.id", ondelete="CASCADE"),
-      nullable=False,
-  )
-
-  hour = Column(Integer, nullable=False)
-  minute = Column(Integer, nullable=False)
-
-  status = Column(
-      Enum(ExecutionStatus), default=ExecutionStatus.PENDING, nullable=False
-  )
-  last_executed_at = Column(DateTime, nullable=True)
-  created_at = Column(DateTime, default=datetime.now)
-
-  __table_args__ = (
-      CheckConstraint("hour >= 0 AND hour <= 23", name="check_valid_hour"),
-      CheckConstraint(
-          "minute >= 0 AND minute <= 59", name="check_valid_minute"
-      ),
-  )
-
-  process = relationship("BackgroundProcessModel", back_populates="schedules")
-
-
-Base.metadata.create_all(bind=engine)
-
-# ------------------------------------------------------------------
-# 3. Sincronización y Carga Dinámica
-# ------------------------------------------------------------------
-bp_dir = BACKGROUND_PROCESSES_DIR
-
-str_bp_dir = str(bp_dir.resolve())
-if str_bp_dir not in sys.path:
-  sys.path.insert(0, str_bp_dir)
-
-
-def sync_processes_to_db(diccionario_funciones):
-  """Guarda y actualiza la metadata y los horarios por defecto en la BD."""
-  db = SessionLocal()
-  try:
-    for clave, data in diccionario_funciones.items():
-      meta = data["metadata"]
-      process_id = meta.get("id", clave)
-
-      db_process = (
-          db.query(BackgroundProcessModel)
-          .filter(BackgroundProcessModel.id == process_id)
-          .first()
-      )
-
-      if not db_process:
-        db_process = BackgroundProcessModel(
-            id=process_id,
-            clave_modulo=clave,
-            name=meta.get("name", process_id),
-            description=meta.get("description", ""),
-            category=meta.get("category", "general"),
-            version=meta.get("version", "1.0.0"),
-            enabled=meta.get("enabled", False),
-        )
-        db.add(db_process)
-      else:
-        db_process.clave_modulo = clave
-        db_process.name = meta.get("name", db_process.name)
-        db_process.description = meta.get("description", db_process.description)
-        db_process.category = meta.get("category", db_process.category)
-        db_process.version = meta.get("version", db_process.version)
-
-      # Actualizar la metadata en memoria con el estado real almacenado en la BD
-      db.flush()
-      meta["enabled"] = db_process.enabled
-      meta["id"] = db_process.id
-
-      # Registrar horarios predefinidos desde la metadata (si existen)
-      schedules_config = meta.get("schedules", [])
-      if schedules_config:
-        for sched in schedules_config:
-          hour = sched.get("hour")
-          minute = sched.get("minute")
-
-          if hour is not None and minute is not None:
-            existing_schedule = (
-                db.query(ProcessScheduleModel)
-                .filter(
-                    ProcessScheduleModel.process_id == process_id,
-                    ProcessScheduleModel.hour == hour,
-                    ProcessScheduleModel.minute == minute,
-                )
-                .first()
-            )
-
-            if not existing_schedule:
-              new_schedule = ProcessScheduleModel(
-                  process_id=process_id, hour=hour, minute=minute
-              )
-              db.add(new_schedule)
-
-    db.commit()
-  except Exception as e:
-    db.rollback()
-    print(f"Error al sincronizar procesos en la base de datos: {e}")
-  finally:
-    db.close()
-
-
-def get_background_proceses():
-  diccionario_funciones = {}
-
-  for archivo in bp_dir.rglob("worker.py"):
-    if archivo.name.startswith("__"):
-      continue
-
-    ruta_relativa = archivo.relative_to(bp_dir)
-    archivo_metadata = archivo.parent / "metadata.json"
-
-    metadata = {}
-    if archivo_metadata.exists():
-      try:
-        with open(archivo_metadata, "r", encoding="utf-8") as f:
-          metadata = json.load(f)
-      except Exception as e:
-        print(f"Error leyendo {archivo_metadata}: {e}")
-
-    # Clave interna estándar (ej: "modulo_a/worker")
-    clave_modulo = str(ruta_relativa.with_suffix("")).replace("\\", "/")
-
-    # Construir el nombre de importación completo incluyendo el directorio base
-    # Ejemplo: "background_processes.modulo_a.worker"
-    partes_ruta = [bp_dir.name] + list(ruta_relativa.with_suffix("").parts)
-    nombre_modulo_completo = ".".join(partes_ruta)
-
-    spec = importlib.util.spec_from_file_location(
-        nombre_modulo_completo, archivo
-    )
-    if spec and spec.loader:
-      modulo = importlib.util.module_from_spec(spec)
-
-      # Asignar paquete para soportar importaciones relativas dentro de worker.py
-      modulo.__package__ = nombre_modulo_completo.rsplit(".", 1)[0]
-      sys.modules[nombre_modulo_completo] = modulo
-
-      try:
-        spec.loader.exec_module(modulo)
-
-        # Extraer la función 'run'
-        func_run = getattr(modulo, "run", None)
-        if callable(func_run):
-          diccionario_funciones[clave_modulo] = {
-              "run": func_run,
-              "metadata": metadata,
-          }
-        else:
-          print(
-              f"Advertencia: {archivo} se cargó pero no tiene una función"
-              " 'run' ejecutable."
-          )
-
-      except Exception as e:
-        print(f"Error al ejecutar/cargar el módulo {archivo}: {e}")
-        sys.modules.pop(nombre_modulo_completo, None)
-
-  sync_processes_to_db(diccionario_funciones)
-
-  return diccionario_funciones
-
-
-def get_bp_schedule_by_id(process_id: str) -> dict:
-  db = SessionLocal()
-  try:
-    process = (
-        db.query(BackgroundProcessModel)
-        .filter(BackgroundProcessModel.id == process_id)
-        .first()
-    )
-
-    if not process:
-      return {"error": f"Proceso con ID '{process_id}' no fue encontrado."}
-
-    resultado = {
-        "id": process.id,
-        "clave_modulo": process.clave_modulo,
-        "name": process.name,
-        "description": process.description,
-        "category": process.category,
-        "version": process.version,
-        "enabled": process.enabled,
-        "last_run": process.last_run.isoformat() if process.last_run else None,
-        "updated_at": (
-            process.updated_at.isoformat() if process.updated_at else None
-        ),
-        "schedules": [
-            {
-                "id": sched.id,
-                "hour": sched.hour,
-                "minute": sched.minute,
-                "status": (
-                    sched.status.value
-                    if isinstance(sched.status, ExecutionStatus)
-                    else sched.status
-                ),
-                "last_executed_at": (
-                    sched.last_executed_at.isoformat()
-                    if sched.last_executed_at
-                    else None
-                ),
-            }
-            for sched in process.schedules
-        ],
-    }
-
-    return resultado
-  finally:
-    db.close()
-
-
-def update_columna_orm(process_id: str, nuevo_estado: bool):
-  db = SessionLocal()
-  try:
-    process = (
-        db.query(BackgroundProcessModel)
-        .filter(BackgroundProcessModel.id == process_id)
-        .first()
-    )
-
-    if process:
-      process.enabled = nuevo_estado
-      db.commit()
-  except Exception as e:
-    db.rollback()
-    print(f"Error al actualizar estado: {e}")
-  finally:
-    db.close()
-
-def add_schedule_to_process(process_id: str, hour: int, minute: int) -> dict:
-  """Agrega un nuevo horario (hora y minuto) a un proceso existente."""
-  # 1. Validaciones básicas de hora y minuto
-  if not (0 <= hour <= 23):
-    return {"error": "La hora debe estar en el rango de 0 a 23."}
-  if not (0 <= minute <= 59):
-    return {"error": "El minuto debe estar en el rango de 0 a 59."}
-
-  db = SessionLocal()
-  try:
-    # 2. Verificar que el proceso exista
-    process = (
-        db.query(BackgroundProcessModel)
-        .filter(BackgroundProcessModel.id == process_id)
-        .first()
-    )
-
-    if not process:
-      return {"error": f"Proceso con ID '{process_id}' no fue encontrado."}
-
-    # 3. Evitar duplicar el mismo horario para este proceso
-    existing_schedule = (
-        db.query(ProcessScheduleModel)
-        .filter(
-            ProcessScheduleModel.process_id == process_id,
-            ProcessScheduleModel.hour == hour,
-            ProcessScheduleModel.minute == minute,
-        )
-        .first()
-    )
-
-    if existing_schedule:
-      return {
-          "error": (
-              f"El horario {hour:02d}:{minute:02d} ya existe para este"
-              " proceso."
-          )
-      }
-
-    # 4. Crear y guardar el nuevo horario
-    new_schedule = ProcessScheduleModel(
-        process_id=process_id, hour=hour, minute=minute
-    )
-    db.add(new_schedule)
-    db.commit()
-    db.refresh(new_schedule)
-
-    return {
-        "id": new_schedule.id,
-        "process_id": new_schedule.process_id,
-        "hour": new_schedule.hour,
-        "minute": new_schedule.minute,
-        "status": new_schedule.status.value,
-        "message": "Horario agregado exitosamente.",
-    }
-  
-  except Exception as e:
-    db.rollback()
-    return {"error": f"Error al guardar el horario: {str(e)}"}
-  finally:
-    db.close()
-
-def delete_schedule_to_process(scheduleId: int):
-  db = SessionLocal()
-  try:
-    db.query(ProcessScheduleModel).filter(
-        ProcessScheduleModel.id == scheduleId
-    ).delete(synchronize_session=False)
-    db.commit()
-    return "listo"
-  except Exception as e:
-    db.rollback()
-    print(f"Error al eliminar horario: {e}")
-    raise e
-  finally:
-    db.close()
-
-def update_schedule_to_process(schedule_id: int, hour: int, minute: int) -> dict:
-  """Actualiza la hora y minuto de un horario existente."""
-  if not (0 <= hour <= 23):
-    return {"error": "La hora debe estar en el rango de 0 a 23."}
-  if not (0 <= minute <= 59):
-    return {"error": "El minuto debe estar en el rango de 0 a 59."}
-
-  db = SessionLocal()
-  try:
-    schedule = (
-        db.query(ProcessScheduleModel)
-        .filter(ProcessScheduleModel.id == schedule_id)
-        .first()
-    )
-
-    if not schedule:
-      return {"error": f"El horario con ID {schedule_id} no existe."}
-
-    # Validar duplicados para el mismo proceso
-    existing = (
-        db.query(ProcessScheduleModel)
-        .filter(
-            ProcessScheduleModel.process_id == schedule.process_id,
-            ProcessScheduleModel.hour == hour,
-            ProcessScheduleModel.minute == minute,
-            ProcessScheduleModel.id != schedule_id,
-        )
-        .first()
-    )
-
-    if existing:
-      return {"error": f"Ya existe un horario a las {hour:02d}:{minute:02d}."}
-
-    schedule.hour = hour
-    schedule.minute = minute
-    db.commit()
-
-    return {"message": "Horario actualizado correctamente."}
-  except Exception as e:
-    db.rollback()
-    return {"error": f"Error al actualizar el horario: {str(e)}"}
-  finally:
-    db.close()
-
-============================================================
-
-=== TÍTULO: core\plugin_manager.py ===
-
-import importlib
-import inspect
-from pathlib import Path
-from typing import List
-from fastapi import APIRouter, FastAPI
-from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
-
-
-class PluginManager:
-
-  def __init__(self, app: FastAPI, plugins_dir: Path):
-    self.app = app
-    self.plugins_dir = plugins_dir
-    self.template_dirs: List[Path] = []
-    self.loaded_plugins: List[str] = []
-
-  def discover_and_load(self):
-    """Escanea la carpeta de plugins, importa los routers y monta los estáticos y templates.
-
-    """
-    if not self.plugins_dir.exists() or not self.plugins_dir.is_dir():
-      raise FileNotFoundError(
-          f"El directorio de plugins no existe en: {self.plugins_dir}"
-      )
-
-    # Recorrer cada subdirectorio dentro de la carpeta 'plugins'
-    for plugin_path in self.plugins_dir.iterdir():
-      if plugin_path.is_dir() and not plugin_path.name.startswith(
-          ("_", ".")
-      ):
-        self._load_plugin(plugin_path)
-
-  def _load_plugin(self, plugin_path: Path):
-    plugin_name = plugin_path.name
-    package_prefix = f"plugins.{plugin_name}"
-
-    # --------------------------------------------------------------------------
-    # 1. MONTAR ARCHIVOS ESTÁTICOS DEL PLUGIN (Si existe la carpeta /static)
-    # --------------------------------------------------------------------------
-    static_dir = plugin_path / "static"
-    if static_dir.exists() and static_dir.is_dir():
-      # Acceso HTTP: /static/plugins/nombre_plugin/estilo.css
-      mount_path = f"/static/plugins/{plugin_name}"
-      self.app.mount(
-          mount_path,
-          StaticFiles(directory=str(static_dir)),
-          name=f"static_{plugin_name}",
-      )
-
-    # --------------------------------------------------------------------------
-    # 2. REGISTRAR DIRECTORIO DE TEMPLATES DEL PLUGIN (Si existe /templates)
-    # --------------------------------------------------------------------------
-    templates_dir = plugin_path / "templates"
-    if templates_dir.exists() and templates_dir.is_dir():
-      self.template_dirs.append(templates_dir)
-
-    # --------------------------------------------------------------------------
-    # 3. EXTRAER E IMPORTAR ROUTERS DINÁMICAMENTE
-    # --------------------------------------------------------------------------
-    # Busca en todos los archivos .py dentro del plugin
-    for py_file in plugin_path.rglob("*.py"):
-      if py_file.name.startswith("_"):
-        continue
-
-      # Convertir path relativo a nombre de modulo importable (ej. plugins.medioambiente.router)
-      rel_path = py_file.relative_to(self.plugins_dir.parent)
-      module_dotted = str(rel_path.with_suffix("")).replace("/", ".").replace("\\", ".")
-
-      try:
-        module = importlib.import_module(module_dotted)
-
-        # Buscar cualquier instancia de APIRouter declarada en el módulo
-        for attr_name, attr_value in inspect.getmembers(module):
-          if isinstance(attr_value, APIRouter):
-            # Prevenir registros duplicados si el router se referencia en múltiples partes
-            if getattr(attr_value, "_registered_in_app", False):
-              continue
-
-            # Inluir el router en el runtime de FastAPI
-            self.app.include_router(attr_value)
-            setattr(attr_value, "_registered_in_app", True)
-
-            self.loaded_plugins.append(
-                f"Plugin [{plugin_name}] -> {module_dotted}:{attr_name}"
-            )
-
-      except Exception as e:
-        print(f"❌ Error al cargar el módulo {module_dotted}: {e}")
-
-  def get_jinja_templates(self, global_templates_dir: Path = None) -> Jinja2Templates:
-    """Crea una instancia unificada de Jinja2Templates capaz de buscar en
-
-    todos los directorios /templates de todos los plugins cargados.
-    """
-    all_dirs = []
-    if global_templates_dir and global_templates_dir.exists():
-      all_dirs.append(str(global_templates_dir))
-
-    all_dirs.extend([str(d) for d in self.template_dirs])
-
-    # Jinja2Templates acepta una lista de rutas para buscar plantillas
-    return Jinja2Templates(directory=all_dirs)
-
-============================================================
-
-=== TÍTULO: core\scheduler_service.py ===
-
-import asyncio
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from .bp_crawler import (
-  SessionLocal,
-  BackgroundProcessModel,
-  ProcessScheduleModel,
-  get_background_proceses,
-)
-
-# Instancia global del scheduler con zona horaria definida
-scheduler = AsyncIOScheduler(timezone="America/Santiago")
-
-
-def make_sync_execution_wrapper(func):
-  """Envuelve funciones normales (def) para que corran en un thread secundario sin bloquear asyncio."""
-
-  async def wrapper():
-    loop = asyncio.get_running_loop()
-    await loop.run_in_executor(None, func)
-
-  return wrapper
-
-
-def register_single_job(process, sched) -> bool:
-  """Registra o actualiza un job individual en el scheduler."""
-  diccionario_funciones = get_background_proceses()
-
-  if process.clave_modulo not in diccionario_funciones:
-    return False
-
-  raw_func = diccionario_funciones[process.clave_modulo].get("run")
-  if not raw_func:
-    return False
-
-  func_to_run = (
-      raw_func
-      if asyncio.iscoroutinefunction(raw_func)
-      else make_sync_execution_wrapper(raw_func)
-  )
-  job_id = f"job_{process.id}_{sched.id}"
-
-  scheduler.add_job(
-      func_to_run,
-      "cron",
-      hour=sched.hour,
-      minute=sched.minute,
-      id=job_id,
-      misfire_grace_time=60,
-      replace_existing=True,
-  )
-  print(
-      f"Job actualizado/agregado: '{job_id}'"
-      f" ({sched.hour:02d}:{sched.minute:02d})"
-  )
-  return True
-
-
-def remove_single_job(process_id: int, schedule_id: int):
-  """Remueve un job específico del scheduler si existe."""
-  job_id = f"job_{process_id}_{schedule_id}"
-  if scheduler.get_job(job_id):
-    scheduler.remove_job(job_id)
-    print(f"Job removido del scheduler: '{job_id}'")
-
-
-def load_schedules_from_db():
-  """Carga inicial de todos los horarios habilitados al arrancar la app."""
-  db = SessionLocal()
-  try:
-    processes = (
-        db.query(BackgroundProcessModel)
-        .filter(BackgroundProcessModel.enabled == True)
-        .all()
-    )
-
-    for process in processes:
-      schedules = (
-          db.query(ProcessScheduleModel)
-          .filter(ProcessScheduleModel.process_id == process.id)
-          .all()
-      )
-
-      for sched in schedules:
-        register_single_job(process, sched)
-  except Exception as e:
-    print(f"Error cargando horarios iniciales: {e}")
-  finally:
-    db.close()
-
-============================================================
-
-=== TÍTULO: plugins\generic\snapshot.py ===
-
-import os
-from paths import ROOT_DIR
-
-def mapear_directorio(ruta_raiz, archivo_salida=None):
-  """Recorre la ruta raíz y subcarpetas, mostrando y guardando los archivos,
-
-  excluyendo la carpeta venv.
-  """
-  # Convertir a string por seguridad si viene como Path de pathlib
-  ruta_raiz_str = str(ruta_raiz)
-  print(f"\n[+] Mapeando la ruta: {ruta_raiz_str}\n")
-
-  resultado = []
-
-  for directorio_actual, subdirectorios, archivos in os.walk(ruta_raiz_str):
-    # Excluir la carpeta 'venv' modificando la lista de subdirectorios in-place
-    if "venv" in subdirectorios:
-      subdirectorios.remove("venv")
-
-    # Calcular la profundidad para dar formato de árbol visual
-    nivel = directorio_actual.replace(ruta_raiz_str, "").count(os.sep)
-    indentacion = "  " * nivel
-    carpeta_actual = os.path.basename(directorio_actual) or directorio_actual
-
-    # Agregar carpeta a la lista
-    linea_carpeta = f"{indentacion}📁 {carpeta_actual}/"
-    print(linea_carpeta)
-    resultado.append(linea_carpeta)
-
-    # Agregar archivos de la carpeta
-    for archivo in archivos:
-      indentacion_archivo = "  " * (nivel + 1)
-      linea_archivo = f"{indentacion_archivo}📄 {archivo}"
-      print(linea_archivo)
-      resultado.append(linea_archivo)
-
-  # Guardar en un archivo de texto si se especifica
-  if archivo_salida:
-    with open(archivo_salida, "w", encoding="utf-8") as f:
-      f.write("\n".join(resultado))
-    print(
-        f"\n[✔] ¡Mapeo completado con éxito! Guardado en: {archivo_salida}"
-    )
-  return(resultado)
-
-
-if __name__ == "__main__":
-  # CONFIGURACIÓN:
-  CARPETA_RAIZ = ROOT_DIR
-
-  # Nombre del archivo de texto donde se guardará el resultado (opcional)
-  ARCHIVO_REPORTE = "mapa_archivos.txt"
-
-  mapear_directorio(CARPETA_RAIZ, ARCHIVO_REPORTE)
-
-============================================================
-
-=== TÍTULO: plugins\generic\background_processes\proceso1\worker.py ===
-
-
-
-============================================================
-
-=== TÍTULO: plugins\generic\background_processes\proceso2\config.py ===
+=== TÍTULO: config.py ===
 
 from pathlib import Path
 
@@ -1121,126 +12,17 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent
 
 # Rutas internas relativas del subproyecto
-MODULES_DIR = BASE_DIR / "modules"
-
-============================================================
-
-=== TÍTULO: plugins\generic\background_processes\proceso2\metadata.json ===
-
-{
-  "id": "not_auto",
-  "name": "Notificación Automática Programable",
-  "description": "Muestra una notificación en Windows cada 60 segundos.",
-  "category": "sistema",
-  "version": "1.0.0",
-  "entry_point": "worker.py",
-  "enabled": false
-}
-
-============================================================
-
-=== TÍTULO: plugins\generic\background_processes\proceso2\worker.py ===
-
-import sys
-from pathlib import Path
-
-# Obtener el directorio actual donde vive ESTE main.py
-
-CURRENT_DIR = Path(__file__).resolve().parent
-
-if str(CURRENT_DIR) not in sys.path:
-  sys.path.insert(0, str(CURRENT_DIR))
-
-if "config" in sys.modules:
-  del sys.modules["config"]
-
-# from config import FILE_TEMPLATE_DIR
-
-# Agregar el directorio actual al sys.path para que reconozca los módulos internos ("modules", "readers", etc.)
-if str(CURRENT_DIR) not in sys.path:
-  sys.path.insert(0, str(CURRENT_DIR))
-
-# Importación relativa al subproyecto gracias a la inyección en sys.path
-from .modules.utils import diegoonthemoon
-
-def run():
-  print("Ejecutando proceso en segundo plano...")
-
-============================================================
-
-=== TÍTULO: plugins\generic\background_processes\proceso2\modules\utils.py ===
-
-def diegoonthemoon(strings):
-  return strings + "diegoonthemoon"
-
-============================================================
-
-=== TÍTULO: plugins\medioambiente\__init__.py ===
-
-from .medioambiente import router
-
-============================================================
-
-=== TÍTULO: plugins\medioambiente\medioambiente.py ===
-
-import base64
-from fastapi import APIRouter, File, UploadFile, HTTPException, status,Request
-from fastapi.staticfiles import StaticFiles
-from typing import List
-
-
-# Parte visual
-from paths import Path,TEMPLATES_DIR, STATIC_DIR
-from fastapi.templating import Jinja2Templates
-
-from .riles import router as riles
-# Incluir módulos de endpoints al backend
-
-
-# Definimos el router
-
-router = APIRouter(
-  prefix="/medioambiente",
-  tags=["Medio Ambiente"]
-)
-
-router.include_router(riles)
-
-## Extraer los rescursos estáticos y plantillas usando paths.py
-templates = Jinja2Templates(directory=TEMPLATES_DIR)
-router.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
-
-#Endpoints
-
-@router.get("/")
-async def inicio(request: Request):
-  datos = {"titulo": "Panel de Lectura de pdf Riles | Medioambiente"}
-  return templates.TemplateResponse(
-      request=request, name="areas/medioambiente.html", context=datos
-  )
-  
+SERVICES_DIR = BASE_DIR / "services"
+PAGES_DIR = BASE_DIR / "pages"
+STATIC_DIR = BASE_DIR / "static"
+BP_DIR = BASE_DIR / "backgroundProcesses"
+AUTOMATIZACIONES_DIR = BASE_DIR / "automatizaciones"
 
 
 
 ============================================================
 
-=== TÍTULO: plugins\medioambiente\riles\__init__.py ===
-
-from .riles import router
-
-============================================================
-
-=== TÍTULO: plugins\medioambiente\riles\metadata.json ===
-
-{
-  "plugin_name":"Automatización de Riles",
-  "plugin_category":"Medio Ambiente",
-  "version":"0.1.0"
-}
-
-============================================================
-
-=== TÍTULO: plugins\medioambiente\riles\riles.py ===
+=== TÍTULO: riles.py ===
 
 # routes/medioambiente/riles/riles.py
 from typing import List, Dict, Any, Optional
@@ -1822,25 +604,7 @@ async def parameter_limits(request: Request, local:str,db: Session = Depends(get
 
 ============================================================
 
-=== TÍTULO: plugins\medioambiente\riles\riles_config.py ===
-
-from pathlib import Path
-
-# Ruta raíz exclusiva de ESTA automatización
-BASE_DIR = Path(__file__).resolve().parent
-
-# Rutas internas relativas del subproyecto
-SERVICES_DIR = BASE_DIR / "services"
-PAGES_DIR = BASE_DIR / "pages"
-STATIC_DIR = BASE_DIR / "static"
-BP_DIR = BASE_DIR / "backgroundProcesses"
-AUTOMATIZACIONES_DIR = BASE_DIR / "automatizaciones"
-
-
-
-============================================================
-
-=== TÍTULO: plugins\medioambiente\riles\snap.py ===
+=== TÍTULO: snap.py ===
 
 import os
 
@@ -1889,10 +653,10 @@ if __name__ == "__main__":
 
 ============================================================
 
-=== TÍTULO: plugins\medioambiente\riles\snapshot.py ===
+=== TÍTULO: snapshot.py ===
 
 import os
-from riles_config import BASE_DIR
+from config import BASE_DIR
 
 def mapear_directorio(ruta_raiz, archivo_salida=None):
   """Recorre la ruta raíz y subcarpetas, mostrando y guardando los archivos,
@@ -1948,13 +712,7 @@ if __name__ == "__main__":
 
 ============================================================
 
-=== TÍTULO: plugins\medioambiente\riles\automatizaciones\Envio_correos\__init__.py ===
-
-
-
-============================================================
-
-=== TÍTULO: plugins\medioambiente\riles\automatizaciones\Envio_correos\envio_correos_config.py ===
+=== TÍTULO: automatizaciones\Envio_correos\config.py ===
 
 # automations/medioambiente/riles/lectorPdf/config.py
 from pathlib import Path
@@ -1971,7 +729,7 @@ FILE_TEMPLATE_DIR = TEMPLATES_DIR / "mail.html"
 
 ============================================================
 
-=== TÍTULO: plugins\medioambiente\riles\automatizaciones\Envio_correos\main.py ===
+=== TÍTULO: automatizaciones\Envio_correos\main.py ===
 
 import sys
 from pathlib import Path
@@ -1987,7 +745,13 @@ from typing import List, Dict, Any, Optional
 
 CURRENT_DIR = Path(__file__).resolve().parent
 
-from envio_correos_config import FILE_TEMPLATE_DIR
+if str(CURRENT_DIR) not in sys.path:
+  sys.path.insert(0, str(CURRENT_DIR))
+
+if "config" in sys.modules:
+  del sys.modules["config"]
+
+from config import FILE_TEMPLATE_DIR
 
 BASE_URL = "http://127.0.0.1:8000/medioambiente/riles/api/v1"
 
@@ -2085,127 +849,7 @@ if __name__ == "__main__":
 
 ============================================================
 
-=== TÍTULO: plugins\medioambiente\riles\automatizaciones\Envio_correos\sample.json ===
-
-{
-"analysis_id": 7,
-"tolerable": "False",
-"cant_parametros_tolerables": 0,
-"cant_parametros_extremos": 23,
-"parametros_tolerables": [],
-"parametros_extremos": [
-{"parametro": "boro", "estado": 2, "valor": 1000.0},
-{"parametro": "mercurio", "estado": 2, "valor": 1000.0},
-{"parametro": "zinc", "estado": 2, "valor": 1000.0},
-{"parametro": "cadmio", "estado": 2, "valor": 1000.0},
-{"parametro": "niquel", "estado": 2, "valor": 1000.0},
-{"parametro": "dbo", "estado": 2, "valor": 1000.0},
-{"parametro": "cianuro", "estado": 2, "valor": 1000.0},
-{"parametro": "ph", "estado": 2, "valor": 1000.0},
-{"parametro": "fosforo", "estado": 2, "valor": 1000.0},
-{"parametro": "cobre", "estado": 2, "valor": 1000.0},
-{"parametro": "plomo", "estado": 2, "valor": 1000.0},
-{"parametro": "nitrogeno_amoniacal", "estado": 2, "valor": 1000.0},
-{"parametro": "cromo_hexavalente", "estado": 2, "valor": 1000.0},
-{"parametro": "poder_espumogeno", "estado": 2, "valor": 1000.0},
-{"parametro": "aceites_grasas", "estado": 2, "valor": 1000.0},
-{"parametro": "cromo_total", "estado": 2, "valor": 1000.0},
-{"parametro": "solidos_sedimentables", "estado": 2, "valor": 1000.0},
-{"parametro": "solidos_suspendidos_totales", "estado": 2, "valor": 1000.0},
-{"parametro": "aluminio", "estado": 2, "valor": 1000.0},
-{"parametro": "hidrocarburos_totales", "estado": 2, "valor": 1000.0},
-{"parametro": "arsenico", "estado": 2, "valor": 1000.0},
-{"parametro": "manganeso", "estado": 2, "valor": 1000.0},
-{"parametro": "sulfuros", "estado": 2, "valor": 1000.0}
-],
-"_sa_instance_state": "<sqlalchemy.orm.state.InstanceState object at 0x0000026929AF75E0>",
-"local_rpm": "0", "dbo": "1000", "volumen_de_descarga_diaria": "1000", "zinc": "1000",
-"sulfatos": "1000", "empresa": "AGUAS ARAUCANIA S A", "local_convenio": "SIN CONVENIO",
-"dqo": "1000",
-"volumen_de_descarga_mensual": "1000",
-"cobre": "1000",
-"sulfuros": "1000",
-"id": 7,
-"laboratorio": "AGQ",
-"fosforo": "1000",
-"aluminio": "1000",
-"cromo_total": "1000",
-"created_at": "datetime.datetime(2026, 8, 25, 19, 2, 0, 971986)",
-"local_id": "3086",
-"fecha_emision": "datetime.datetime(2025, 12, 18, 0, 0)",
-"nitrogeno_amoniacal": "1000",
-"cromo_hexavalente": "1000",
-"hidrocarburos_totales": "1000",
-"local_nombre": "ALVI TEMUCO",
-"fecha_muestreo": "datetime.datetime(2025, 11, 28, 0, 0)",
-"poder_espumogeno": "1000",
-"arsenico": "1000", 
-"manganeso": "1000", 
-"local_region": "IX - Araucanía", 
-"tipo_muestreo": "", 
-"solidos_sedimentables": "1000",
-"boro": "1000", "mercurio": "1000", 
-"local_comuna": "Temuco",
-"aceites_grasas": "1000",
-"solidos_suspendidos_totales": "1000",
-"cadmio": "1000", "niquel": "1000",
-"local_direccion": "Av. Balmaceda 1531",
-"ph": "1000",
-"cianuro": "1000",
-"plomo": "1000",
-"b64":""
-}
-
-
-
-============================================================
-
-=== TÍTULO: plugins\medioambiente\riles\automatizaciones\lectorPdf\dataKeywords.json ===
-
-{
-  "date_keywords" : ["Fecha"],
-  "store_address" : ["Direccion","Dirección","Lugar","Descripción"]
-}
-
-
-============================================================
-
-=== TÍTULO: plugins\medioambiente\riles\automatizaciones\lectorPdf\labKeywords.json ===
-
-{
-  "merieux": {
-    "tabla": "LIM.",
-    "lab": "Food"
-  },
-  "hidrolab": {
-    "tabla": "",
-    "lab": "www.hidrolab.com"
-  },
-  "anam": {
-    "tabla": "",
-    "lab": "anam"
-  },
-  "sgs": {
-    "tabla": "mg",
-    "lab": "société"
-  },
-  "biodiversa": {
-    "tabla": "sedimentales",
-    "lab": "biodiversa"
-  },
-  "aguas_patagonia": {
-    "tabla": "Parámetro",
-    "lab": "patagonia"
-  },
-  "agq": {
-    "tabla": "",
-    "lab": "agq"
-  }
-}
-
-============================================================
-
-=== TÍTULO: plugins\medioambiente\riles\automatizaciones\lectorPdf\lector_pdf_config.py ===
+=== TÍTULO: automatizaciones\lectorPdf\config.py ===
 
 from pathlib import Path
 
@@ -2228,7 +872,7 @@ LOCALES_CSV = DATA_DIR / "Locales.csv"
 
 ============================================================
 
-=== TÍTULO: plugins\medioambiente\riles\automatizaciones\lectorPdf\main.py ===
+=== TÍTULO: automatizaciones\lectorPdf\main.py ===
 
 import base64
 from datetime import datetime
@@ -2247,6 +891,10 @@ CURRENT_DIR = Path(__file__).resolve().parent
 # Forzar a Python a buscar PRIMERO en la carpeta local de este worker
 if str(CURRENT_DIR) not in sys.path:
   sys.path.insert(0, str(CURRENT_DIR))
+
+# Limpiar del caché cualquier 'config' previo cargado por otros scripts
+if "config" in sys.modules:
+  del sys.modules["config"]
 
 # Obtener la fecha y hora actual en formato yymmddhhmmss
 tiempo_actual = datetime.now().strftime("%y%m%d%H%M%S")
@@ -2442,19 +1090,100 @@ async def process_multiple_pdfs(files: List[UploadFile] = File(...)):
 
 ============================================================
 
-=== TÍTULO: plugins\medioambiente\riles\automatizaciones\lectorPdf\projectTag.json ===
+=== TÍTULO: automatizaciones\lectorPdf\mapa_archivos.txt ===
 
-{
-  "projectId":"riles_lectura_pdf",
-  "projectName":"Lectura de PDF",
-  "projectDesc":"Automatización que lee pdf de RILES",
-  "projectType":"Automation",
-  "projectMd":"lectorPDF"
-}
+📁 lectorPdf/
+  📄 codigo_consolidado.txt
+  📄 config.py
+  📄 dataKeywords.json
+  📄 labKeywords.json
+  📄 main.py
+  📄 mapa_archivos.txt
+  📄 snap.py
+  📄 snapshot.py
+  📁 Data/
+    📄 Locales.csv
+  📁 ocr/
+    📄 prototipo.py
+    📄 ScanBiodiversa.pdf
+    📄 scanBiodiversaReader.py
+    📄 tabla.png
+    📁 __pycache__/
+      📄 scanbiodiversa.cpython-310.pyc
+  📁 readers/
+    📄 agq_reader.py
+    📄 anam_reader.py
+    📄 ap_reader.py
+    📄 biodiversaReader.py
+    📄 hidrolab_reader.py
+    📄 merieux_reader.py
+    📄 scantest.py
+    📄 sgs_reader.py
+    📁 __pycache__/
+      📄 anam_reader.cpython-310.pyc
+      📄 hidrolab_reader.cpython-310.pyc
+      📄 merieux_reader.cpython-310.pyc
+  📁 results/
+  📁 test pdf/
+    📄 addr_merieux.pdf
+    📄 addr_merieux2.pdf
+    📄 AGQ.pdf
+    📄 AGQ2.pdf
+    📄 AGQ3.pdf
+    📄 AGQMALVADO.pdf
+    📄 AguasPatagonia.pdf
+    📄 ANAM.pdf
+    📄 BioDiversa.pdf
+    📄 HIDROLAB.pdf
+    📄 merieux.pdf
+    📄 merieux2.pdf
+    📄 merieux3.pdf
+    📄 merieuxEspecial1.pdf
+    📄 merieuxEspecial2.pdf
+    📄 merieuxEspecial3.pdf
+    📄 merieuxEspecial4.pdf
+    📄 merieuxEspecial5.pdf
+    📄 ScanBiodiversa.pdf
+    📄 SGS.pdf
+    📄 SGS2.pdf
+    📄 SGS3.pdf
+    📄 SGS4.pdf
+    📄 SURALIS.pdf
+    📄 SURALIS_2.pdf
+    📁 fails/
+      📄 hidrolab.pdf
+      📄 MAYO 26.2026-0000041371-03056925INF_AGUA-C.pdf
+  📁 tests/
+    📄 pdfClassifier.py
+    📄 pdfCounter.py
+    📄 pdfs.csv
+  📁 utils/
+    📄 binaryUtils.py
+    📄 context.py
+    📄 data_cleaning.py
+    📄 dtos.py
+    📄 models.py
+    📄 testUtils.py
+    📄 utils.py
+    📁 __pycache__/
+      📄 dataCleaning.cpython-310.pyc
+      📄 data_cleaning.cpython-310.pyc
+      📄 dtos.cpython-310.pyc
+      📄 models.cpython-310.pyc
+      📄 utils.cpython-310.pyc
+  📁 __pycache__/
+    📄 agq_reader.cpython-310.pyc
+    📄 anam_reader.cpython-310.pyc
+    📄 ap_reader.cpython-310.pyc
+    📄 biodiversaReader.cpython-310.pyc
+    📄 config.cpython-310.pyc
+    📄 hidrolab_reader.cpython-310.pyc
+    📄 merieux_reader.cpython-310.pyc
+    📄 sgs_reader.cpython-310.pyc
 
 ============================================================
 
-=== TÍTULO: plugins\medioambiente\riles\automatizaciones\lectorPdf\snap.py ===
+=== TÍTULO: automatizaciones\lectorPdf\snap.py ===
 
 import os
 
@@ -2503,7 +1232,7 @@ if __name__ == "__main__":
 
 ============================================================
 
-=== TÍTULO: plugins\medioambiente\riles\automatizaciones\lectorPdf\snapshot.py ===
+=== TÍTULO: automatizaciones\lectorPdf\snapshot.py ===
 
 import os
 from config import BASE_DIR
@@ -2562,7 +1291,7 @@ if __name__ == "__main__":
 
 ============================================================
 
-=== TÍTULO: plugins\medioambiente\riles\automatizaciones\lectorPdf\ocr\prototipo.py ===
+=== TÍTULO: automatizaciones\lectorPdf\ocr\prototipo.py ===
 
 import cv2
 import numpy as np
@@ -2614,7 +1343,7 @@ resultado = encontrar_tabla_en_pdf("ScanBiodiversa.pdf", "tabla.png")
 
 ============================================================
 
-=== TÍTULO: plugins\medioambiente\riles\automatizaciones\lectorPdf\ocr\scanBiodiversaReader.py ===
+=== TÍTULO: automatizaciones\lectorPdf\ocr\scanBiodiversaReader.py ===
 
 import ssl
 import easyocr
@@ -2706,7 +1435,7 @@ print(tablas_encontradas)
 
 ============================================================
 
-=== TÍTULO: plugins\medioambiente\riles\automatizaciones\lectorPdf\readers\agq_reader.py ===
+=== TÍTULO: automatizaciones\lectorPdf\readers\agq_reader.py ===
 
 import io
 from pathlib import Path
@@ -2892,7 +1621,7 @@ def agq_reader(file_input: Union[str, Path, bytes, io.BytesIO]):
 
 ============================================================
 
-=== TÍTULO: plugins\medioambiente\riles\automatizaciones\lectorPdf\readers\anam_reader.py ===
+=== TÍTULO: automatizaciones\lectorPdf\readers\anam_reader.py ===
 
 import io
 from pathlib import Path
@@ -3013,7 +1742,7 @@ def anam_reader(file_input: Union[str, Path, bytes, io.BytesIO]):
 
 ============================================================
 
-=== TÍTULO: plugins\medioambiente\riles\automatizaciones\lectorPdf\readers\ap_reader.py ===
+=== TÍTULO: automatizaciones\lectorPdf\readers\ap_reader.py ===
 
 # Lector Aguas Patagonia
 import io
@@ -3117,7 +1846,7 @@ def ap_reader(file_input: Union[str, Path, bytes, io.BytesIO]):
 
 ============================================================
 
-=== TÍTULO: plugins\medioambiente\riles\automatizaciones\lectorPdf\readers\biodiversaReader.py ===
+=== TÍTULO: automatizaciones\lectorPdf\readers\biodiversaReader.py ===
 
 import io
 from pathlib import Path
@@ -3164,7 +1893,7 @@ def biodiversa_reader(
 
 ============================================================
 
-=== TÍTULO: plugins\medioambiente\riles\automatizaciones\lectorPdf\readers\hidrolab_reader.py ===
+=== TÍTULO: automatizaciones\lectorPdf\readers\hidrolab_reader.py ===
 
 import io
 from pathlib import Path
@@ -3295,7 +2024,7 @@ def hidrolab_reader(file_input: Union[str, Path, bytes, io.BytesIO]):
 
 ============================================================
 
-=== TÍTULO: plugins\medioambiente\riles\automatizaciones\lectorPdf\readers\merieux_reader.py ===
+=== TÍTULO: automatizaciones\lectorPdf\readers\merieux_reader.py ===
 
 import io
 from pathlib import Path
@@ -3540,7 +2269,7 @@ def merieux_reader_string(file_input: Union[str, Path, bytes, io.BytesIO], ignor
 
 ============================================================
 
-=== TÍTULO: plugins\medioambiente\riles\automatizaciones\lectorPdf\readers\scantest.py ===
+=== TÍTULO: automatizaciones\lectorPdf\readers\scantest.py ===
 
 import pdfplumber
 import fitz
@@ -3597,7 +2326,7 @@ extraer_texto_pdf(testFile)
 
 ============================================================
 
-=== TÍTULO: plugins\medioambiente\riles\automatizaciones\lectorPdf\readers\sgs_reader.py ===
+=== TÍTULO: automatizaciones\lectorPdf\readers\sgs_reader.py ===
 
 import io
 from pathlib import Path
@@ -3728,7 +2457,7 @@ def sgs_reader(file_input: Union[str, Path, bytes, io.BytesIO], lab: str):
 
 ============================================================
 
-=== TÍTULO: plugins\medioambiente\riles\automatizaciones\lectorPdf\tests\pdfClassifier.py ===
+=== TÍTULO: automatizaciones\lectorPdf\tests\pdfClassifier.py ===
 
 import fitz  # PyMuPDF
 import hashlib
@@ -3817,7 +2546,7 @@ extraer_imagenes_pdf("SURALIS_2.pdf")
 
 ============================================================
 
-=== TÍTULO: plugins\medioambiente\riles\automatizaciones\lectorPdf\tests\pdfCounter.py ===
+=== TÍTULO: automatizaciones\lectorPdf\tests\pdfCounter.py ===
 
 import os
 import fitz  # PyMuPDF
@@ -3957,7 +2686,7 @@ exportar_pdfs_por_palabra_a_csv(path,lista_palabras,"pdfs.csv")
 
 ============================================================
 
-=== TÍTULO: plugins\medioambiente\riles\automatizaciones\lectorPdf\utils\binaryUtils.py ===
+=== TÍTULO: automatizaciones\lectorPdf\utils\binaryUtils.py ===
 
 import pdfplumber
 import json
@@ -4052,7 +2781,7 @@ def print_pdf_results(results):
 
 ============================================================
 
-=== TÍTULO: plugins\medioambiente\riles\automatizaciones\lectorPdf\utils\context.py ===
+=== TÍTULO: automatizaciones\lectorPdf\utils\context.py ===
 
 import os
 
@@ -4099,7 +2828,7 @@ respaldar_archivos_especificos(path_proyecto, "archivos_python_json.txt")
 
 ============================================================
 
-=== TÍTULO: plugins\medioambiente\riles\automatizaciones\lectorPdf\utils\data_cleaning.py ===
+=== TÍTULO: automatizaciones\lectorPdf\utils\data_cleaning.py ===
 
 def remove_symbol(val:str):
   symbols = [">","<"]
@@ -4132,7 +2861,7 @@ def full_parsing(value):
 
 ============================================================
 
-=== TÍTULO: plugins\medioambiente\riles\automatizaciones\lectorPdf\utils\dtos.py ===
+=== TÍTULO: automatizaciones\lectorPdf\utils\dtos.py ===
 
 from dataclasses import dataclass, asdict
 from typing import Optional
@@ -4186,11 +2915,11 @@ class AnalisisAguaDTO:
 
 ============================================================
 
-=== TÍTULO: plugins\medioambiente\riles\automatizaciones\lectorPdf\utils\models.py ===
+=== TÍTULO: automatizaciones\lectorPdf\utils\models.py ===
 
 import pandas as pd
 from thefuzz import process, fuzz
-from lector_pdf_config import LOCALES_CSV
+from config import LOCALES_CSV
 
 def search_store_id(direccion_ingresada, limite_confianza=60):
 
@@ -4242,7 +2971,7 @@ def search_store_id(direccion_ingresada, limite_confianza=60):
 
 ============================================================
 
-=== TÍTULO: plugins\medioambiente\riles\automatizaciones\lectorPdf\utils\testUtils.py ===
+=== TÍTULO: automatizaciones\lectorPdf\utils\testUtils.py ===
 
 import json
 
@@ -4258,7 +2987,7 @@ print(a("biodiversa"))
 
 ============================================================
 
-=== TÍTULO: plugins\medioambiente\riles\automatizaciones\lectorPdf\utils\utils.py ===
+=== TÍTULO: automatizaciones\lectorPdf\utils\utils.py ===
 
 from collections import Counter
 import io
@@ -4269,7 +2998,7 @@ import unicodedata
 from typing import Union, List, Dict, Any, Optional
 
 import pdfplumber
-from lector_pdf_config import LAB_KEYWORDS_FILE, DATA_KEYWORDS_FILE
+from config import LAB_KEYWORDS_FILE, DATA_KEYWORDS_FILE
 
 
 def open_pdf(file_input: Union[str, Path, bytes, io.BytesIO]):
@@ -4506,27 +3235,7 @@ def print_pdf_results(results: Dict[str, Any]) -> None:
 
 ============================================================
 
-=== TÍTULO: plugins\medioambiente\riles\backgroundProcesses\outlookChecker\__init__.py ===
-
-
-
-============================================================
-
-=== TÍTULO: plugins\medioambiente\riles\backgroundProcesses\outlookChecker\metadata.json ===
-
-{
-  "id": "outlookChecker",
-  "name": "outlookChecker",
-  "description": "Lee correos y guarda parametros en base de datos ",
-  "category": "riles",
-  "version": "1.0.0",
-  "entry_point": "worker.py",
-  "enabled": false
-}
-
-============================================================
-
-=== TÍTULO: plugins\medioambiente\riles\backgroundProcesses\outlookChecker\outlook_config.py ===
+=== TÍTULO: backgroundProcesses\outlookChecker\config.py ===
 
 from pathlib import Path
 
@@ -4540,7 +3249,7 @@ DOWNLOADS_DIR = BASE_DIR / "downloads"
 
 ============================================================
 
-=== TÍTULO: plugins\medioambiente\riles\backgroundProcesses\outlookChecker\worker.py ===
+=== TÍTULO: backgroundProcesses\outlookChecker\worker.py ===
 
 import os
 import sys
@@ -4559,7 +3268,7 @@ if "config" in sys.modules:
   del sys.modules["config"]
 
 # Importar el config.py propio de esta carpeta
-from .outlook_config import DOWNLOADS_DIR
+from .config import DOWNLOADS_DIR
 from .modules.outlook_agent import descargar_adjuntos
 
 def notificar_windows(titulo: str, mensaje: str) -> None:
@@ -4587,7 +3296,7 @@ if __name__ == "__main__":
 
 ============================================================
 
-=== TÍTULO: plugins\medioambiente\riles\backgroundProcesses\outlookChecker\modules\outlook_agent.py ===
+=== TÍTULO: backgroundProcesses\outlookChecker\modules\outlook_agent.py ===
 
 import os
 import pythoncom
@@ -4752,7 +3461,7 @@ def descargar_adjuntos():
 
 ============================================================
 
-=== TÍTULO: plugins\medioambiente\riles\services\database.py ===
+=== TÍTULO: services\database.py ===
 
 from pathlib import Path
 from sqlalchemy import create_engine, event
@@ -4794,7 +3503,7 @@ def get_db():
 
 ============================================================
 
-=== TÍTULO: plugins\medioambiente\riles\services\inbox_service.py ===
+=== TÍTULO: services\inbox_service.py ===
 
 # services/inbox_service.py
 from typing import List, Dict, Any
@@ -4913,7 +3622,7 @@ class InboxService:
 
 ============================================================
 
-=== TÍTULO: plugins\medioambiente\riles\services\mails_service.py ===
+=== TÍTULO: services\mails_service.py ===
 
 import csv
 import io
@@ -5231,7 +3940,7 @@ class LocalMailService:
 
 ============================================================
 
-=== TÍTULO: plugins\medioambiente\riles\services\models.py ===
+=== TÍTULO: services\models.py ===
 
 import enum
 from datetime import datetime, timezone
@@ -5492,7 +4201,7 @@ class LocalMailModel(Base):
 
 ============================================================
 
-=== TÍTULO: plugins\medioambiente\riles\services\parameter_service.py ===
+=== TÍTULO: services\parameter_service.py ===
 
 from typing import List, Dict, Any
 from fastapi import UploadFile, HTTPException, status
@@ -5556,7 +4265,7 @@ class ParameterService:
 
 ============================================================
 
-=== TÍTULO: plugins\medioambiente\riles\services\pdf_service.py ===
+=== TÍTULO: services\pdf_service.py ===
 
 # services/pdf_service.py
 import base64
@@ -5667,7 +4376,7 @@ class PDFService:
 
 ============================================================
 
-=== TÍTULO: plugins\medioambiente\riles\services\riles_service.py ===
+=== TÍTULO: services\riles_service.py ===
 
 # services/riles_service.py
 import base64
@@ -6454,7 +5163,7 @@ class RilesService:
 
 ============================================================
 
-=== TÍTULO: plugins\medioambiente\riles\services\schemas.py ===
+=== TÍTULO: services\schemas.py ===
 
 from datetime import datetime
 from typing import Any, Dict, Optional
@@ -6644,7 +5353,7 @@ class LocalMailSchema(LocalMailBase):
 
 ============================================================
 
-=== TÍTULO: plugins\medioambiente\riles\services\store_service.py ===
+=== TÍTULO: services\store_service.py ===
 
 from typing import List
 from fastapi import UploadFile, HTTPException, status
@@ -6818,7 +5527,7 @@ class StoreService:
 
 ============================================================
 
-=== TÍTULO: plugins\medioambiente\riles\services\transform_xlsx_service.py ===
+=== TÍTULO: services\transform_xlsx_service.py ===
 
 import io
 import pandas as pd
@@ -6926,143 +5635,6 @@ class ExcelTransformService:
 
     # Retornar como BytesIO para ser compatible con StreamingResponse
     return io.BytesIO(csv_buffer.getvalue().encode('utf-8-sig'))
-
-
-
-============================================================
-
-=== TÍTULO: routes\documentation\__init__.py ===
-
-from .documentacion import router
-
-============================================================
-
-=== TÍTULO: routes\documentation\documentacion.py ===
-
-from fastapi import APIRouter, Request, HTTPException
-from fastapi.templating import Jinja2Templates
-import markdown
-import os
-from automations.generic.snapshot import mapear_directorio
-from paths import ROOT_DIR, TEMPLATES_DIR
-
-# Definimos el router
-router = APIRouter(
-  prefix="/documentacion",
-  tags=["Documentación"]
-)
-templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
-
-@router.get("/api/ejecutar-snapshot")
-def ejecutar_snapshot():
-  """Endpoint que dispara la automatización de mapeo de archivos."""
-  archivo_salida = ROOT_DIR / "mapa_archivos.txt"
-  
-  # Llamamos a tu función de automatización
-  resultado = mapear_directorio(ROOT_DIR, archivo_salida)
-  
-  return {
-    "status": "completado",
-    "archivo_generado": str(archivo_salida),
-    "structure": resultado
-  }
-
-@router.get("/page")
-def get_docs_page(request: Request):
-  """Página principal de documentación con el menú lateral jerárquico."""
-  docs_dir = ROOT_DIR / "docs"
-  
-  # Estructura: {"NombreCarpeta": [{"nombre": "archivo", "path": "ruta/archivo.md"}]}
-  categorias = {}
-  
-  if docs_dir.exists():
-    for raiz, _, archivos in os.walk(docs_dir):
-      for archivo in archivos:
-        if archivo.endswith(".md"):
-          ruta_completa = os.path.join(raiz, archivo)
-          ruta_relativa = os.path.relpath(ruta_completa, docs_dir)
-          
-          # Separar la ruta por carpetas usando el separador del sistema operativo
-          partes = ruta_relativa.split(os.sep)
-          
-          if len(partes) > 1:
-            categoria = partes[0]  # Es una subcarpeta
-          else:
-            categoria = "General"  # Archivos sueltos en la raíz de docs/
-            
-          if categoria not in categorias:
-            categorias[categoria] = []
-            
-          # Quitamos la extensión .md para mostrar el nombre limpio
-          nombre_sin_ext = os.path.splitext(archivo)[0]
-          
-          categorias[categoria].append({
-            "nombre": nombre_sin_ext,
-            "path": ruta_relativa.replace("\\", "/")
-          })
-
-  return templates.TemplateResponse(
-    request,
-    name="documentation.html",
-    context={"categorias": categorias}
-  )
-
-@router.get("/content/{file_path:path}")
-def get_md_content(file_path: str):
-  """Lee un archivo .md específico, lo convierte a HTML y lo retorna."""
-  archivo_objetivo = ROOT_DIR / "docs" / file_path
-  
-  # Seguridad básica para evitar path traversal
-  if not archivo_objetivo.resolve().is_relative_to((ROOT_DIR / "docs").resolve()):
-    raise HTTPException(status_code=403, detail="Acceso denegado")
-    
-  if not archivo_objetivo.exists() or not archivo_objetivo.suffix == ".md":
-    raise HTTPException(status_code=404, detail="Documento no encontrado")
-    
-  with open(archivo_objetivo, "r", encoding="utf-8") as f:
-    contenido_md = f.read()
-    
-  # Configurar las extensiones de Markdown para soportar Mermaid
-  extensiones = [
-    'tables',
-    'codehilite',
-    'pymdownx.superfences'
-  ]
-  
-  extension_configs = {
-    'pymdownx.superfences': {
-      'custom_fences': [
-        {
-          'name': 'mermaid',
-          'class': 'mermaid',
-          'format': lambda source, language, css_class, options, md, **kwargs: f'<div class="{css_class}">{source}</div>'
-        }
-      ]
-    }
-  }
-
-  # Convertir Markdown a HTML
-  contenido_html = markdown.markdown(
-    contenido_md, 
-    extensions=extensiones,
-    extension_configs=extension_configs
-  )
-  
-  return {"html": contenido_html}
-
-@router.get("/page/structure")
-def get_proyect_structure(request: Request):
-  result = ejecutar_snapshot()
-
-  return templates.TemplateResponse(
-    request,
-    name="structure.html", 
-    context={"result": result}
-  )
-
-============================================================
-
-=== TÍTULO: static\style\areas\medioambiente ===
 
 
 
