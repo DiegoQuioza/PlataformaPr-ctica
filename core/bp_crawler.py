@@ -16,7 +16,7 @@ from sqlalchemy import (
   create_engine,
 )
 from sqlalchemy.orm import declarative_base, relationship, sessionmaker
-from paths import BACKGROUND_PROCESSES_DIR, DB_DIR
+from paths import PLUGINS_DIR, DB_DIR
 
 # ------------------------------------------------------------------
 # 1. Configuración de la Base de Datos
@@ -89,7 +89,7 @@ Base.metadata.create_all(bind=engine)
 # ------------------------------------------------------------------
 # 3. Sincronización y Carga Dinámica
 # ------------------------------------------------------------------
-bp_dir = BACKGROUND_PROCESSES_DIR
+bp_dir = PLUGINS_DIR
 
 str_bp_dir = str(bp_dir.resolve())
 if str_bp_dir not in sys.path:

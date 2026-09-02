@@ -105,134 +105,134 @@ async def inicio(request: Request):
     context=datos
   )
 
-  # Endpoint global de automatizaciones (lee el arbol OpenAPI de toda la app)
-  @app.get("/automatizaciones")
-  def automatizaciones(request: Request):
-    openapi = app.openapi()
-    arbol = {} 
-    for path, methods in openapi["paths"].items():
-      for method, info in methods.items():
-        tags = info.get("tags", ["Sin categoría"])
-        for tag in tags:
-          arbol.setdefault(tag, []).append({
-            "titulo": info.get("summary") or path,
-            "descripcion": info.get("description"),
-            "ruta": path,
-            "metodo": method.upper()
-          })
+# Endpoint global de automatizaciones (lee el arbol OpenAPI de toda la app)
+@app.get("/automatizaciones")
+def automatizaciones(request: Request):
+  openapi = app.openapi()
+  arbol = {} 
+  for path, methods in openapi["paths"].items():
+    for method, info in methods.items():
+      tags = info.get("tags", ["Sin categoría"])
+      for tag in tags:
+        arbol.setdefault(tag, []).append({
+          "titulo": info.get("summary") or path,
+          "descripcion": info.get("description"),
+          "ruta": path,
+          "metodo": method.upper()
+        })
 
-    return templates.TemplateResponse(
-      request, 
-      name="automatizaciones.html", 
-      context={"titulo": "Automatizaciones", "arbol": arbol}
+  return templates.TemplateResponse(
+    request, 
+    name="automatizaciones.html", 
+    context={"titulo": "Automatizaciones", "arbol": arbol}
+  )
+
+@app.get("/background-processes")
+def background_proceses(request: Request):
+  procesos = get_background_proceses()
+  return templates.TemplateResponse(
+    request,
+    name = "background-processes.html",
+    context={"titulo":"Procesos en segundo plano", "procesos":procesos}
+  )
+
+@app.get("/background-processes-all")
+def all_background_proceses():
+  procesos = get_background_proceses()
+  return procesos
+
+@app.get("/background-process-schedule/{process_id}")
+def read_bp_schedule_by_id(process_id: str):
+  resultado = get_bp_schedule_by_id(process_id)
+
+  if "error" in resultado:
+    raise HTTPException(status_code=404, detail=resultado["error"])
+
+  return resultado
+
+@app.post("/background-process-schedule/{process_id}")
+def enable_or_disable_schedule_by_id(process_id: str):
+  resultado = get_bp_schedule_by_id(process_id)
+
+  if "error" in resultado:
+    raise HTTPException(status_code=404, detail=resultado["error"])
+
+  Actualstatus = resultado["enabled"]
+  Newstatus = not Actualstatus
+  update_columna_orm(process_id,Newstatus)
+
+  return get_bp_schedule_by_id(process_id)
+
+class ScheduleCreate(BaseModel):
+  hour: int = Field(..., ge=0, le=23, description="Hora en formato 24h (0-23)")
+  minute: int = Field(..., ge=0, le=59, description="Minuto (0-59)")
+
+
+@app.post("/background-process-schedule/{process_id}/add")
+def create_schedule_endpoint(process_id: str, schedule: ScheduleCreate):
+  resultado = add_schedule_to_process(
+      process_id=process_id, hour=schedule.hour, minute=schedule.minute
+  )
+
+  if "error" in resultado:
+    raise HTTPException(status_code=400, detail=resultado["error"])
+
+  db = SessionLocal()
+  try:
+    process = (
+        db.query(BackgroundProcessModel)
+        .filter(BackgroundProcessModel.id == process_id)
+        .first()
+    )
+    sched = (
+        db.query(ProcessScheduleModel)
+        .filter(
+            ProcessScheduleModel.process_id == process_id,
+            ProcessScheduleModel.hour == schedule.hour,
+            ProcessScheduleModel.minute == schedule.minute,
+        )
+        .first()
     )
 
-  @app.get("/background-processes")
-  def background_proceses(request: Request):
-    procesos = get_background_proceses()
-    return templates.TemplateResponse(
-      request,
-      name = "background-processes.html",
-      context={"titulo":"Procesos en segundo plano", "procesos":procesos}
+    if process and sched and process.enabled:
+      register_single_job(process, sched)
+  finally:
+    db.close()
+
+  return resultado
+
+@app.delete("/background-process-schedule/item/{scheduleId}")
+def delete_schedule_endpoint(scheduleId: int):
+  db = SessionLocal()
+  process_id = None
+  try:
+    sched = (
+        db.query(ProcessScheduleModel)
+        .filter(ProcessScheduleModel.id == scheduleId)
+        .first()
     )
+    if sched:
+      process_id = sched.process_id
+  finally:
+    db.close()
 
-  @app.get("/background-processes-all")
-  def all_background_proceses():
-    procesos = get_background_proceses()
-    return procesos
+  delete_schedule_to_process(scheduleId)
 
-  @app.get("/background-process-schedule/{process_id}")
-  def read_bp_schedule_by_id(process_id: str):
-    resultado = get_bp_schedule_by_id(process_id)
+  if process_id:
+    remove_single_job(process_id, scheduleId)
 
-    if "error" in resultado:
-      raise HTTPException(status_code=404, detail=resultado["error"])
+  return {"message": "Horario eliminado correctamente"}
 
-    return resultado
+@app.put("/background-process-schedule/item/{scheduleId}")
+def update_schedule_endpoint(scheduleId: int, schedule: ScheduleCreate):
+  resultado = update_schedule_to_process(
+      schedule_id=scheduleId, hour=schedule.hour, minute=schedule.minute
+  )
 
-  @app.post("/background-process-schedule/{process_id}")
-  def enable_or_disable_schedule_by_id(process_id: str):
-    resultado = get_bp_schedule_by_id(process_id)
+  if "error" in resultado:
+    raise HTTPException(status_code=400, detail=resultado["error"])
 
-    if "error" in resultado:
-      raise HTTPException(status_code=404, detail=resultado["error"])
-
-    Actualstatus = resultado["enabled"]
-    Newstatus = not Actualstatus
-    update_columna_orm(process_id,Newstatus)
-
-    return get_bp_schedule_by_id(process_id)
-
-  class ScheduleCreate(BaseModel):
-    hour: int = Field(..., ge=0, le=23, description="Hora en formato 24h (0-23)")
-    minute: int = Field(..., ge=0, le=59, description="Minuto (0-59)")
-
-
-  @app.post("/background-process-schedule/{process_id}/add")
-  def create_schedule_endpoint(process_id: str, schedule: ScheduleCreate):
-    resultado = add_schedule_to_process(
-        process_id=process_id, hour=schedule.hour, minute=schedule.minute
-    )
-
-    if "error" in resultado:
-      raise HTTPException(status_code=400, detail=resultado["error"])
-
-    db = SessionLocal()
-    try:
-      process = (
-          db.query(BackgroundProcessModel)
-          .filter(BackgroundProcessModel.id == process_id)
-          .first()
-      )
-      sched = (
-          db.query(ProcessScheduleModel)
-          .filter(
-              ProcessScheduleModel.process_id == process_id,
-              ProcessScheduleModel.hour == schedule.hour,
-              ProcessScheduleModel.minute == schedule.minute,
-          )
-          .first()
-      )
-
-      if process and sched and process.enabled:
-        register_single_job(process, sched)
-    finally:
-      db.close()
-
-    return resultado
-
-  @app.delete("/background-process-schedule/item/{scheduleId}")
-  def delete_schedule_endpoint(scheduleId: int):
-    db = SessionLocal()
-    process_id = None
-    try:
-      sched = (
-          db.query(ProcessScheduleModel)
-          .filter(ProcessScheduleModel.id == scheduleId)
-          .first()
-      )
-      if sched:
-        process_id = sched.process_id
-    finally:
-      db.close()
-
-    delete_schedule_to_process(scheduleId)
-
-    if process_id:
-      remove_single_job(process_id, scheduleId)
-
-    return {"message": "Horario eliminado correctamente"}
-
-  @app.put("/background-process-schedule/item/{scheduleId}")
-  def update_schedule_endpoint(scheduleId: int, schedule: ScheduleCreate):
-    resultado = update_schedule_to_process(
-        schedule_id=scheduleId, hour=schedule.hour, minute=schedule.minute
-    )
-
-    if "error" in resultado:
-      raise HTTPException(status_code=400, detail=resultado["error"])
-
-    return resultado
+  return resultado
 
 if __name__ == "__main__":
   uvicorn.run(

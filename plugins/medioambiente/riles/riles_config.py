@@ -9,4 +9,4 @@ PAGES_DIR = BASE_DIR / "pages"
 STATIC_DIR = BASE_DIR / "static"
 BP_DIR = BASE_DIR / "backgroundProcesses"
 AUTOMATIZACIONES_DIR = BASE_DIR / "automatizaciones"
-
+DB_DIR = BASE_DIR / "data"

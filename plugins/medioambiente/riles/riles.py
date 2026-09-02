@@ -1,4 +1,4 @@
-# routes/medioambiente/riles/riles.py
+# plugins/medioambiente/riles/riles.py
 from typing import List, Dict, Any, Optional
 from fastapi import APIRouter, Depends, File, Request, UploadFile, status, Body, Query,Path
 from fastapi.responses import StreamingResponse
@@ -33,11 +33,10 @@ Base.metadata.create_all(bind=engine)
 
 router = APIRouter(prefix="/riles", tags=["Automatización de riles"])
 
-
 templates = Jinja2Templates(directory=[PAGES_DIR, TEMPLATES_DIR])
 
-router.mount("/static", StaticFiles(directory=R_STATIC_DIR), name="static")
-router.mount("/static-global", StaticFiles(directory=STATIC_DIR), name="static_global")
+# router.mount("/static", StaticFiles(directory=R_STATIC_DIR), name="static")
+# router.mount("/static-global", StaticFiles(directory=STATIC_DIR), name="static_global")
 
 
 @router.post(

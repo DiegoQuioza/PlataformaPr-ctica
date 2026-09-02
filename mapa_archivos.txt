@@ -26,6 +26,7 @@
     📄 Locales.csv
     📄 Mail_Local.xlsx
     📄 processes_registry.db
+    📄 riles_data.db
   📁 docs/
     📁 Automatizaciones/
     📁 Crear Automatizaciones/
@@ -100,7 +101,9 @@
             📁 utils/
             📁 __pycache__/
               📄 config.cpython-310.pyc
+              📄 envio_correos_config.cpython-310.pyc
               📄 main.cpython-310.pyc
+              📄 __init__.cpython-310.pyc
           📁 lectorPdf/
             📄 codigo_consolidado.txt
             📄 dataKeywords.json
@@ -221,7 +224,9 @@
                 📄 outlook_agent.cpython-310.pyc
             📁 __pycache__/
               📄 config.cpython-310.pyc
+              📄 outlook_config.cpython-310.pyc
               📄 worker.cpython-310.pyc
+              📄 __init__.cpython-310.pyc
         📁 data/
           📄 riles_data.db
         📁 pages/
@@ -256,16 +261,18 @@
             📄 store_service.cpython-310.pyc
             📄 transform_xlsx_service.cpython-310.pyc
         📁 static/
-          📄 main.css
-          📄 params.css
-          📄 records.css
-          📄 sendmail.css
-          📄 style.css
+          📁 styles/
+            📄 main.css
+            📄 params.css
+            📄 records.css
+            📄 sendmail.css
+            📄 style.css
         📁 __pycache__/
           📄 config.cpython-310.pyc
           📄 database.cpython-310.pyc
           📄 models.cpython-310.pyc
           📄 riles.cpython-310.pyc
+          📄 riles_config.cpython-310.pyc
           📄 schemas.cpython-310.pyc
           📄 __init__.cpython-310.pyc
       📁 __pycache__/

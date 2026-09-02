@@ -1,7 +1,7 @@
 from pathlib import Path
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import declarative_base, sessionmaker
-from paths import DB_DIR
+from ..riles_config import DB_DIR
 
 # 1. Crear el directorio físicamente si no existe
 DB_DIR.mkdir(parents=True, exist_ok=True)

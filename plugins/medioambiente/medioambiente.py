@@ -23,7 +23,7 @@ router.include_router(riles)
 
 ## Extraer los rescursos estáticos y plantillas usando paths.py
 templates = Jinja2Templates(directory=TEMPLATES_DIR)
-router.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
 
 #Endpoints
 

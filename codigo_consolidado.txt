@@ -61,32 +61,6 @@ from core.scheduler_service import (
     remove_single_job,
 )
 
-
-app = FastAPI(staticfiles=STATIC_DIR) # Ajusta según tu inicialización de templates/estáticos
-
-
-plugin_manager = PluginManager(app=app, plugins_dir=PLUGINS_DIR)
-plugin_manager.discover_and_load()
-
-# Configurar motor Jinja2 unificado que busca en /templates globales y en cada plugin
-templates = plugin_manager.get_jinja_templates(
-    global_templates_dir=TEMPLATES_DIR
-)
-
-# Estáticos globales opcionales
-if STATIC_DIR.exists():
-  app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
-
-
-# Imprimir resumen de inicialización en consola
-print("=" * 60)
-print(
-    f"🚀 [PLUGIN ENGINE] Carga finalizada. {len(plugin_manager.loaded_plugins)} routers integrados:"
-)
-for loaded in plugin_manager.loaded_plugins:
-  print(f"  ├─ {loaded}")
-print("=" * 60)
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
   # 1. Cargar la base de datos al scheduler al iniciar
@@ -103,20 +77,32 @@ async def lifespan(app: FastAPI):
   print("Scheduler detenido.")
 
 
-app = FastAPI(lifespan=lifespan)
-
-# Inicialización del servidor
-
+# Única instancia de FastAPI para toda la app
 app = FastAPI(
   title="Automatizaciones | Sostenibilidad",
   lifespan=lifespan
 )
 
-# Incluir módulos de endpoints al backend
+plugin_manager = PluginManager(app=app, plugins_dir=PLUGINS_DIR)
+plugin_manager.discover_and_load()
 
-# Montar recursos estáticos y plantillas usando paths.py
-templates = Jinja2Templates(directory=TEMPLATES_DIR)
-app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+# Configurar motor Jinja2 unificado que busca en /templates globales y en cada plugin
+templates = plugin_manager.get_jinja_templates(
+    global_templates_dir=TEMPLATES_DIR
+)
+
+# Estáticos globales opcionales
+if STATIC_DIR.exists():
+  app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+# Imprimir resumen de inicialización en consola
+print("=" * 60)
+print(
+    f"🚀 [PLUGIN ENGINE] Carga finalizada. {len(plugin_manager.loaded_plugins)} routers integrados:"
+)
+for loaded in plugin_manager.loaded_plugins:
+  print(f"  ├─ {loaded}")
+print("=" * 60)
 
 # Endpoint raíz principal
 @app.get("/")
@@ -130,135 +116,134 @@ async def inicio(request: Request):
     context=datos
   )
 
-# # Endpoint global de automatizaciones (lee el arbol OpenAPI de toda la app)
-# @app.get("/automatizaciones")
-# def automatizaciones(request: Request):
-#   openapi = app.openapi()
-#   arbol = {}
+  # Endpoint global de automatizaciones (lee el arbol OpenAPI de toda la app)
+  @app.get("/automatizaciones")
+  def automatizaciones(request: Request):
+    openapi = app.openapi()
+    arbol = {} 
+    for path, methods in openapi["paths"].items():
+      for method, info in methods.items():
+        tags = info.get("tags", ["Sin categoría"])
+        for tag in tags:
+          arbol.setdefault(tag, []).append({
+            "titulo": info.get("summary") or path,
+            "descripcion": info.get("description"),
+            "ruta": path,
+            "metodo": method.upper()
+          })
 
-#   for path, methods in openapi["paths"].items():
-#     for method, info in methods.items():
-#       tags = info.get("tags", ["Sin categoría"])
-#       for tag in tags:
-#         arbol.setdefault(tag, []).append({
-#           "titulo": info.get("summary") or path,
-#           "descripcion": info.get("description"),
-#           "ruta": path,
-#           "metodo": method.upper()
-#         })
-  
-#   return templates.TemplateResponse(
-#     request, 
-#     name="automatizaciones.html", 
-#     context={"titulo": "Automatizaciones", "arbol": arbol}
-#   )
+    return templates.TemplateResponse(
+      request, 
+      name="automatizaciones.html", 
+      context={"titulo": "Automatizaciones", "arbol": arbol}
+    )
 
-# @app.get("/background-processes")
-# def background_proceses(request: Request):
-#   procesos = get_background_proceses()
-#   return templates.TemplateResponse(
-#     request,
-#     name = "background-processes.html",
-#     context={"titulo":"Procesos en segundo plano", "procesos":procesos}
-#   )
+  @app.get("/background-processes")
+  def background_proceses(request: Request):
+    procesos = get_background_proceses()
+    return templates.TemplateResponse(
+      request,
+      name = "background-processes.html",
+      context={"titulo":"Procesos en segundo plano", "procesos":procesos}
+    )
 
-# @app.get("/background-processes-all")
-# def all_background_proceses():
-#   procesos = get_background_proceses()
-#   return procesos
+  @app.get("/background-processes-all")
+  def all_background_proceses():
+    procesos = get_background_proceses()
+    return procesos
 
-# @app.get("/background-process-schedule/{process_id}")
-# def read_bp_schedule_by_id(process_id: str):
-#   resultado = get_bp_schedule_by_id(process_id)
+  @app.get("/background-process-schedule/{process_id}")
+  def read_bp_schedule_by_id(process_id: str):
+    resultado = get_bp_schedule_by_id(process_id)
 
-#   if "error" in resultado:
-#     raise HTTPException(status_code=404, detail=resultado["error"])
+    if "error" in resultado:
+      raise HTTPException(status_code=404, detail=resultado["error"])
 
-#   return resultado
+    return resultado
 
-# @app.post("/background-process-schedule/{process_id}")
-# def enable_or_disable_schedule_by_id(process_id: str):
-#   resultado = get_bp_schedule_by_id(process_id)
+  @app.post("/background-process-schedule/{process_id}")
+  def enable_or_disable_schedule_by_id(process_id: str):
+    resultado = get_bp_schedule_by_id(process_id)
 
-#   if "error" in resultado:
-#     raise HTTPException(status_code=404, detail=resultado["error"])
+    if "error" in resultado:
+      raise HTTPException(status_code=404, detail=resultado["error"])
 
-#   Actualstatus = resultado["enabled"]
-#   Newstatus = not Actualstatus
-#   update_columna_orm(process_id,Newstatus)
+    Actualstatus = resultado["enabled"]
+    Newstatus = not Actualstatus
+    update_columna_orm(process_id,Newstatus)
 
-#   return get_bp_schedule_by_id(process_id)
+    return get_bp_schedule_by_id(process_id)
 
-# class ScheduleCreate(BaseModel):
-#   hour: int = Field(..., ge=0, le=23, description="Hora en formato 24h (0-23)")
-#   minute: int = Field(..., ge=0, le=59, description="Minuto (0-59)")
+  class ScheduleCreate(BaseModel):
+    hour: int = Field(..., ge=0, le=23, description="Hora en formato 24h (0-23)")
+    minute: int = Field(..., ge=0, le=59, description="Minuto (0-59)")
 
 
-# @app.post("/background-process-schedule/{process_id}/add")
-# def create_schedule_endpoint(process_id: str, schedule: ScheduleCreate):
-#   resultado = add_schedule_to_process(
-#       process_id=process_id, hour=schedule.hour, minute=schedule.minute
-#   )
+  @app.post("/background-process-schedule/{process_id}/add")
+  def create_schedule_endpoint(process_id: str, schedule: ScheduleCreate):
+    resultado = add_schedule_to_process(
+        process_id=process_id, hour=schedule.hour, minute=schedule.minute
+    )
 
-#   if "error" in resultado:
-#     raise HTTPException(status_code=400, detail=resultado["error"])
+    if "error" in resultado:
+      raise HTTPException(status_code=400, detail=resultado["error"])
 
-#   db = SessionLocal()
-#   try:
-#     process = (
-#         db.query(BackgroundProcessModel)
-#         .filter(BackgroundProcessModel.id == process_id)
-#         .first()
-#     )
-#     sched = (
-#         db.query(ProcessScheduleModel)
-#         .filter(
-#             ProcessScheduleModel.process_id == process_id,
-#             ProcessScheduleModel.hour == schedule.hour,
-#             ProcessScheduleModel.minute == schedule.minute,
-#         )
-#         .first()
-#     )
+    db = SessionLocal()
+    try:
+      process = (
+          db.query(BackgroundProcessModel)
+          .filter(BackgroundProcessModel.id == process_id)
+          .first()
+      )
+      sched = (
+          db.query(ProcessScheduleModel)
+          .filter(
+              ProcessScheduleModel.process_id == process_id,
+              ProcessScheduleModel.hour == schedule.hour,
+              ProcessScheduleModel.minute == schedule.minute,
+          )
+          .first()
+      )
 
-#     if process and sched and process.enabled:
-#       register_single_job(process, sched)
-#   finally:
-#     db.close()
+      if process and sched and process.enabled:
+        register_single_job(process, sched)
+    finally:
+      db.close()
 
-#   return resultado
+    return resultado
 
-# @app.delete("/background-process-schedule/item/{scheduleId}")
-# def delete_schedule_endpoint(scheduleId: int):
-#   db = SessionLocal()
-#   process_id = None
-#   try:
-#     sched = (
-#         db.query(ProcessScheduleModel)
-#         .filter(ProcessScheduleModel.id == scheduleId)
-#         .first()
-#     )
-#     if sched:
-#       process_id = sched.process_id
-#   finally:
-#     db.close()
+  @app.delete("/background-process-schedule/item/{scheduleId}")
+  def delete_schedule_endpoint(scheduleId: int):
+    db = SessionLocal()
+    process_id = None
+    try:
+      sched = (
+          db.query(ProcessScheduleModel)
+          .filter(ProcessScheduleModel.id == scheduleId)
+          .first()
+      )
+      if sched:
+        process_id = sched.process_id
+    finally:
+      db.close()
 
-#   delete_schedule_to_process(scheduleId)
+    delete_schedule_to_process(scheduleId)
 
-#   if process_id:
-#     remove_single_job(process_id, scheduleId)
+    if process_id:
+      remove_single_job(process_id, scheduleId)
 
-#   return {"message": "Horario eliminado correctamente"}
+    return {"message": "Horario eliminado correctamente"}
 
-# @app.put("/background-process-schedule/item/{scheduleId}")
-# def update_schedule_endpoint(scheduleId: int, schedule: ScheduleCreate):
-#   resultado = update_schedule_to_process(
-#       schedule_id=scheduleId, hour=schedule.hour, minute=schedule.minute
-#   )
+  @app.put("/background-process-schedule/item/{scheduleId}")
+  def update_schedule_endpoint(scheduleId: int, schedule: ScheduleCreate):
+    resultado = update_schedule_to_process(
+        schedule_id=scheduleId, hour=schedule.hour, minute=schedule.minute
+    )
 
-#   if "error" in resultado:
-#     raise HTTPException(status_code=400, detail=resultado["error"])
+    if "error" in resultado:
+      raise HTTPException(status_code=400, detail=resultado["error"])
 
-#   return resultado
+    return resultado
 
 if __name__ == "__main__":
   uvicorn.run(
@@ -886,58 +871,40 @@ class PluginManager:
     plugin_name = plugin_path.name
     package_prefix = f"plugins.{plugin_name}"
 
-    # --------------------------------------------------------------------------
-    # 1. MONTAR ARCHIVOS ESTÁTICOS DEL PLUGIN (Si existe la carpeta /static)
-    # --------------------------------------------------------------------------
+    # --- 1. Estáticos (sin cambios) ---
     static_dir = plugin_path / "static"
     if static_dir.exists() and static_dir.is_dir():
-      # Acceso HTTP: /static/plugins/nombre_plugin/estilo.css
-      mount_path = f"/static/plugins/{plugin_name}"
-      self.app.mount(
-          mount_path,
-          StaticFiles(directory=str(static_dir)),
-          name=f"static_{plugin_name}",
-      )
+        mount_path = f"/static/plugins/{plugin_name}"
+        self.app.mount(
+            mount_path,
+            StaticFiles(directory=str(static_dir)),
+            name=f"static_{plugin_name}",
+        )
 
-    # --------------------------------------------------------------------------
-    # 2. REGISTRAR DIRECTORIO DE TEMPLATES DEL PLUGIN (Si existe /templates)
-    # --------------------------------------------------------------------------
+    # --- 2. Templates (sin cambios) ---
     templates_dir = plugin_path / "templates"
     if templates_dir.exists() and templates_dir.is_dir():
-      self.template_dirs.append(templates_dir)
+        self.template_dirs.append(templates_dir)
 
-    # --------------------------------------------------------------------------
-    # 3. EXTRAER E IMPORTAR ROUTERS DINÁMICAMENTE
-    # --------------------------------------------------------------------------
-    # Busca en todos los archivos .py dentro del plugin
-    for py_file in plugin_path.rglob("*.py"):
-      if py_file.name.startswith("_"):
-        continue
+    # --- 3. Importar SOLO el paquete raíz del plugin ---
+    # Su __init__.py ya encadena todo lo demás (medioambiente -> riles -> services -> ...)
+    if not (plugin_path / "__init__.py").exists():
+        print(f"⚠️  Plugin [{plugin_name}] sin __init__.py, se omite.")
+        return
 
-      # Convertir path relativo a nombre de modulo importable (ej. plugins.medioambiente.router)
-      rel_path = py_file.relative_to(self.plugins_dir.parent)
-      module_dotted = str(rel_path.with_suffix("")).replace("/", ".").replace("\\", ".")
-
-      try:
-        module = importlib.import_module(module_dotted)
-
-        # Buscar cualquier instancia de APIRouter declarada en el módulo
+    try:
+        module = importlib.import_module(package_prefix)
         for attr_name, attr_value in inspect.getmembers(module):
-          if isinstance(attr_value, APIRouter):
-            # Prevenir registros duplicados si el router se referencia en múltiples partes
-            if getattr(attr_value, "_registered_in_app", False):
-              continue
-
-            # Inluir el router en el runtime de FastAPI
-            self.app.include_router(attr_value)
-            setattr(attr_value, "_registered_in_app", True)
-
-            self.loaded_plugins.append(
-                f"Plugin [{plugin_name}] -> {module_dotted}:{attr_name}"
-            )
-
-      except Exception as e:
-        print(f"❌ Error al cargar el módulo {module_dotted}: {e}")
+            if isinstance(attr_value, APIRouter):
+                if getattr(attr_value, "_registered_in_app", False):
+                    continue
+                self.app.include_router(attr_value)
+                setattr(attr_value, "_registered_in_app", True)
+                self.loaded_plugins.append(
+                    f"Plugin [{plugin_name}] -> {package_prefix}:{attr_name}"
+                )
+    except Exception as e:
+        print(f"❌ Error al cargar el plugin {plugin_name}: {e}")
 
   def get_jinja_templates(self, global_templates_dir: Path = None) -> Jinja2Templates:
     """Crea una instancia unificada de Jinja2Templates capaz de buscar en
@@ -1208,7 +1175,7 @@ router.include_router(riles)
 
 ## Extraer los rescursos estáticos y plantillas usando paths.py
 templates = Jinja2Templates(directory=TEMPLATES_DIR)
-router.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
 
 #Endpoints
 
@@ -1242,7 +1209,7 @@ from .riles import router
 
 === TÍTULO: plugins\medioambiente\riles\riles.py ===
 
-# routes/medioambiente/riles/riles.py
+# plugins/medioambiente/riles/riles.py
 from typing import List, Dict, Any, Optional
 from fastapi import APIRouter, Depends, File, Request, UploadFile, status, Body, Query,Path
 from fastapi.responses import StreamingResponse
@@ -1251,6 +1218,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
 from paths import STATIC_DIR, TEMPLATES_DIR
+from .riles_config import STATIC_DIR as R_STATIC_DIR, PAGES_DIR
 from .services.database import Base, engine, get_db
 
 from .services.schemas import (
@@ -1276,8 +1244,10 @@ Base.metadata.create_all(bind=engine)
 
 router = APIRouter(prefix="/riles", tags=["Automatización de riles"])
 
-templates = Jinja2Templates(directory=TEMPLATES_DIR)
-router.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+templates = Jinja2Templates(directory=[PAGES_DIR, TEMPLATES_DIR])
+
+# router.mount("/static", StaticFiles(directory=R_STATIC_DIR), name="static")
+# router.mount("/static-global", StaticFiles(directory=STATIC_DIR), name="static_global")
 
 
 @router.post(
@@ -1835,7 +1805,7 @@ PAGES_DIR = BASE_DIR / "pages"
 STATIC_DIR = BASE_DIR / "static"
 BP_DIR = BASE_DIR / "backgroundProcesses"
 AUTOMATIZACIONES_DIR = BASE_DIR / "automatizaciones"
-
+DB_DIR = BASE_DIR / "data"
 
 
 ============================================================
@@ -1987,7 +1957,7 @@ from typing import List, Dict, Any, Optional
 
 CURRENT_DIR = Path(__file__).resolve().parent
 
-from envio_correos_config import FILE_TEMPLATE_DIR
+from .envio_correos_config import FILE_TEMPLATE_DIR
 
 BASE_URL = "http://127.0.0.1:8000/medioambiente/riles/api/v1"
 
@@ -4757,7 +4727,7 @@ def descargar_adjuntos():
 from pathlib import Path
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import declarative_base, sessionmaker
-from paths import DB_DIR
+from ..riles_config import DB_DIR
 
 # 1. Crear el directorio físicamente si no existe
 DB_DIR.mkdir(parents=True, exist_ok=True)
@@ -5675,7 +5645,7 @@ from typing import List, Dict, Any, Optional
 from fastapi import HTTPException, Response, status,UploadFile,File
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
-import automatizaciones.Envio_correos.main as MailingService
+from ..automatizaciones.Envio_correos import main as MailingService
 from fastapi.responses import StreamingResponse
 from io import BytesIO, TextIOWrapper,StringIO
 import csv
