@@ -256,7 +256,7 @@ async function executeSendRequest(analysisId, type) {
     type: type
   });
 
-  const endpoint = `/api/v1/send-analysis-mailing?${params.toString()}`;
+  const endpoint = `/medioambiente/riles/api/v1/send-analysis-mailing?${params.toString()}`;
 
   const response = await fetch(endpoint, {
     method: 'POST',

@@ -3,9 +3,11 @@
   📄 codigo_consolidado.txt
   📄 main.py
   📄 mapa_archivos.txt
+  📄 MiAplicacionConsolidada.spec
   📄 paths.py
   📄 pyproject.toml
   📄 readme.md
+  📄 readme_2.md
   📄 requirements.txt
   📄 snap.py
   📄 snapshot.py
@@ -55,6 +57,12 @@
     📄 SOURCES.txt
     📄 top_level.txt
   📁 plugins/
+    📁 documentation/
+      📄 documentacion.py
+      📄 __init__.py
+      📁 __pycache__/
+        📄 documentacion.cpython-310.pyc
+        📄 __init__.cpython-310.pyc
     📁 generic/
       📄 mapa_archivos.txt
       📄 snapshot.py
@@ -175,6 +183,7 @@
               📄 pdfClassifier.py
               📄 pdfCounter.py
               📄 pdfs.csv
+            📁 Uploads/
             📁 utils/
               📄 binaryUtils.py
               📄 context.py
@@ -281,8 +290,6 @@
     📁 sostenibilidad/
   📁 routes/
     📁 documentation/
-      📄 documentacion.py
-      📄 __init__.py
       📁 __pycache__/
         📄 documentacion.cpython-310.pyc
         📄 __init__.cpython-310.pyc
@@ -310,6 +317,24 @@
         📄 page.css
       📁 riles/
         📄 main.css
+        📄 params.css
+        📄 records.css
+        📄 sendmail.css
+        📄 style.css
+    📁 styles/
+      📄 code.css
+      📄 components.css
+      📄 index.css
+      📄 main.css
+      📄 main_page.css
+      📄 scrollbar.css
+      📄 variables.css
+      📁 areas/
+        📄 medioambiente
+        📄 medioambiente.css
+      📁 background_processes/
+        📄 page.css
+      📁 riles/
         📄 params.css
         📄 records.css
         📄 sendmail.css

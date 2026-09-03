@@ -1,9 +1,11 @@
 # plugins/medioambiente/riles/riles.py
+import csv
 from typing import List, Dict, Any, Optional
 from fastapi import APIRouter, Depends, File, Request, UploadFile, status, Body, Query,Path
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+import io
 from sqlalchemy.orm import Session
 
 from paths import STATIC_DIR, TEMPLATES_DIR
@@ -39,7 +41,7 @@ templates = Jinja2Templates(directory=[PAGES_DIR, TEMPLATES_DIR])
 # router.mount("/static-global", StaticFiles(directory=STATIC_DIR), name="static_global")
 
 
-@router.post(
+@router.post( 
   "/api/v1/process-pdf",
   summary="Procesar un único PDF",
   status_code=status.HTTP_200_OK,
@@ -137,6 +139,32 @@ async def import_pdf_data(
 ):
   """Importar datos desde un archivo CSV a la base de datos a"""
   return await RilesService.import_pdf_data_csv(file, db)
+
+@router.post("/api/v1/update-pdf-data", status_code=status.HTTP_201_CREATED)
+async def update_pdf_data_csv(
+  file: UploadFile = File(...), db: Session = Depends(get_db)
+):
+  """Importar y actualizar datos desde un archivo CSV a la base de datos"""
+  return await RilesService.update_pdf_data_csv(file, db)
+
+@router.post(
+  "/api/v1/replace-pdf-data",
+  status_code=status.HTTP_200_OK,
+  response_model=List[Dict[str, Any]],
+  summary="Reemplazar completamente los datos desde un CSV",
+  description="Respalda los datos existentes, trunca la tabla e importa los registros del CSV dentro de una transacción atómica.",
+)
+async def replace_pdf_data_csv(
+  file: UploadFile = File(...), db: Session = Depends(get_db)
+):
+  """
+  Importa y reemplaza la totalidad de los datos desde un archivo CSV.
+  Devuelve el conjunto de datos previo antes de la eliminación.
+  """
+  datos_anteriores = await RilesService.replace_pdf_data_with_backup(
+    file=file, db=db
+  )
+  return datos_anteriores
 
 @router.post("/api/v1/transform-xlsx-to-valid-csv", status_code=status.HTTP_201_CREATED)
 async def transform_excel_endpoint(file: UploadFile = File(...), file_name:str="Datos_adaptados"):
@@ -265,6 +293,79 @@ def get_mailing_queue_by_id(analysis_id: Optional[str] = None,db: Session = Depe
   else:
     return RilesService.get_mailing_queue_by_id(analysis_id,db)
 
+@router.get(
+    "/api/v1/export-mailing-queue_csv",
+    summary="Exportar estado de correo por análisis",
+    status_code=status.HTTP_200_OK
+)
+def export_mailing_queue(
+    analysis_id: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    if not analysis_id:
+        data = RilesService.get_full_mailing_queue(db)
+    else:
+        data = RilesService.get_mailing_queue_by_id(
+            analysis_id,
+            db
+        )
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+
+    # Encabezados
+    writer.writerow([
+        "id_analisis",
+        "status_local",
+        "status_sanitaria"
+    ])
+
+    # Datos
+    for item in data:
+        writer.writerow([
+            item.id,
+            item.id_analisis,
+            item.status_local,
+            item.status_sanitaria
+        ])
+
+    output.seek(0)
+
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": "attachment; filename=mailing_queue.csv"
+        }
+    )
+
+@router.post(
+    "/api/v1/insert-mailing-queue",
+    summary="Insertar cola de mailing desde CSV",
+    status_code=status.HTTP_201_CREATED
+)
+async def insert_mailing_queue(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db)
+):
+    return await RilesService.insert_mailing_queue_csv(
+        file=file,
+        db=db
+    )
+
+@router.put(
+    "/api/v1/update-mailing-queue",
+    summary="Actualizar cola de mailing desde CSV",
+    status_code=status.HTTP_200_OK
+)
+async def update_mailing_queue(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db)
+):
+    return await RilesService.update_mailing_queue_csv(
+        file=file,
+        db=db
+    )
 
 @router.delete("/api/v1/delete-mailing-queue", status_code=status.HTTP_201_CREATED)
 async def delete_mailing_queue(db: Session = Depends(get_db)):
@@ -276,9 +377,6 @@ async def send_analysis_mailing(
   
 ):
   return RilesService.send_analysis_mailing(analysis_id,type, db)
-
-
-
 
 #====================================
 # Locales
@@ -533,14 +631,16 @@ async def inicio(
   ):
   datos = await StoreService.get_stores_analysis(db)
   return templates.TemplateResponse(
-      request=request, name="riles/main.html", context={"locales": datos}
+      request=request,
+      name="main.html",
+      context={"locales": datos}
   )
 
 @router.get("/upload")
 async def upload(request: Request):
   datos = {"titulo": "Panel de Lectura de pdf Riles | Medioambiente"}
   return templates.TemplateResponse(
-    request=request, name="riles/uploadFiles.html", context=datos
+    request=request, name="uploadFiles.html", context=datos
   )
 
 
@@ -548,14 +648,14 @@ async def upload(request: Request):
 async def inbox(request: Request):
   datos = {"titulo": "Panel de Lectura de pdf Riles | Medioambiente"}
   return templates.TemplateResponse(
-    request=request, name="riles/inbox.html", context=datos
+    request=request, name="inbox.html", context=datos
   )
 
 @router.get("/parameter-limits")
 async def parameter_limits(request: Request):
   datos = {"titulo": "Limites de parámetros para riles | Medioambiente"}
   return templates.TemplateResponse(
-    request=request, name="riles/paramlimits.html", context=datos
+    request=request, name="paramlimits.html", context=datos
   )
 
 
@@ -565,7 +665,7 @@ async def parameter_limits(request: Request, db: Session = Depends(get_db)):
 
   return templates.TemplateResponse(
       request=request,
-      name="riles/sendmails.html",
+      name="sendmails.html",
       context={"analisis_list": analisis_sin_enviar},
   )
 
@@ -575,6 +675,6 @@ async def parameter_limits(request: Request, local:str,db: Session = Depends(get
 
   return templates.TemplateResponse(
       request=request,
-      name="riles/records.html",
+      name="records.html",
       context={"analisis_list": analisis_por_local},
   )

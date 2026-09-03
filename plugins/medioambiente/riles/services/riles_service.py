@@ -1,6 +1,6 @@
 # services/riles_service.py
 import base64
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Set
 from fastapi import HTTPException, Response, status,UploadFile,File
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
@@ -23,7 +23,7 @@ from .models import (
   MAPEO_NOMBRES_COLUMNAS,
   LocalMailModel,
 )
-from .schemas import AnalisisAguaSchema, File_b64_Schema
+from .schemas import AnalisisAguaSchema, File_b64_Schema,MailingSchema,MailingCreate, MailingUpdate
 from .mails_service import LocalMailService
 
 class RilesService:
@@ -331,6 +331,41 @@ class RilesService:
       )
 
   @staticmethod
+  def update_pdf_data(
+    analysis_id: int, payload: AnalisisAguaSchema, db: Session
+  ) -> Dict[str, Any]:
+    try:
+      registro_existente = (
+        db.query(AnalisisAguaModel)
+        .filter(AnalisisAguaModel.id == analysis_id)
+        .first()
+      )
+
+      if not registro_existente:
+        raise HTTPException(
+          status_code=status.HTTP_404_NOT_FOUND,
+          detail=f"No se encontró el análisis con ID {analysis_id}",
+        )
+
+      for key, value in payload.model_dump().items():
+        if key != "id" and hasattr(registro_existente, key):
+          setattr(registro_existente, key, value)
+
+      db.commit()
+      db.refresh(registro_existente)
+
+      return {
+        "status": "success",
+        "message": f"Registro con ID {analysis_id} actualizado correctamente.",
+      }
+    except Exception as e:
+      db.rollback()
+      raise HTTPException(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        detail=f"Error al actualizar en la base de datos: {str(e)}",
+      )
+
+  @staticmethod
   def delete_pdf_data(db: Session) -> Dict[str, Any]:
     try:
 
@@ -356,6 +391,25 @@ class RilesService:
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         detail=f"Error al guardar en la base de datos: {str(e)}",
       )
+
+  @staticmethod
+  async def replace_pdf_data_with_backup(
+    file: UploadFile,
+    db: Session
+  ):
+    datos_anteriores = RilesService.export_pdf_data(db=db)
+
+    RilesService.delete_pdf_data(db=db)
+
+    RilesService.import_pdf_data_csv(
+        file=file,
+        db=db
+    )
+
+    db.commit()
+
+    return datos_anteriores
+
 
   @staticmethod
   def get_analysis_tolerance(
@@ -428,7 +482,10 @@ class RilesService:
     try:
       return (
         db.query(MailingModel)
-        .filter(MailingModel.status_local == "PENDIENTE" or MailingModel.status_sanitaria == "PENDIENTE")
+        .filter(
+            (MailingModel.status_local == "PENDIENTE") |
+            (MailingModel.status_sanitaria == "PENDIENTE")
+        )
         .all()
       )
     except Exception as e:
@@ -437,6 +494,22 @@ class RilesService:
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         detail=f"Error al consultar tabla mailing: {str(e)}",
       )
+
+  @staticmethod
+  def get_full_mailing_queue(db: Session) -> List[MailingModel]:
+      try:
+        return (
+          db.query(MailingModel)
+          .all()
+        )
+      except Exception as e:
+        db.rollback()
+        raise HTTPException(
+          status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+          detail=f"Error al consultar tabla mailing: {str(e)}",
+        )
+      
+  @staticmethod
   def get_mailing_queue_by_id(analysis_id : str,db: Session) -> dict:
       try:
         return (
@@ -453,7 +526,249 @@ class RilesService:
           status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
           detail=f"Error al consultar tabla mailing: {str(e)}",
         )
-  
+  @staticmethod
+  def _obtener_buffer_y_delimitador(content: bytes) -> tuple[StringIO, str]:
+    """Auxiliar privado para decodificar el CSV y detectar el delimitador dinámicamente."""
+    try:
+      decoded_content = content.decode("utf-8-sig")
+    except UnicodeDecodeError:
+      decoded_content = content.decode("latin-1")
+
+    buffer = StringIO(decoded_content)
+    sample_text = buffer.read(2048)
+    buffer.seek(0)
+
+    try:
+      dialect = csv.Sniffer().sniff(sample_text, delimiters=",;\t")
+      delimiter = dialect.delimiter
+    except Exception:
+      delimiter = ";"
+
+    return buffer, delimiter
+
+  @staticmethod
+  async def insert_mailing_queue_csv(
+    file: UploadFile,
+    db: Session
+  ) -> Dict[str, Any]:
+
+    if not file.filename or not file.filename.lower().endswith(".csv"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El archivo proporcionado debe ser un CSV.",
+        )
+
+    content = await file.read()
+
+    buffer, delimiter = RilesService._obtener_buffer_y_delimitador(
+        content
+    )
+
+    reader = csv.DictReader(
+        buffer,
+        delimiter=delimiter
+    )
+
+    modelos_a_insertar: List[MailingModel] = []
+    ids_analisis_nuevos: List[int] = []
+
+    for row_idx, row in enumerate(reader, start=2):
+
+        clean_row = {
+            key.strip(): value.strip() if value else None
+            for key, value in row.items()
+            if key
+        }
+
+        try:
+            esquema_item = MailingCreate(**clean_row)
+
+            datos_dict = esquema_item.model_dump(
+                exclude_none=True
+            )
+
+            # El ID lo genera la BD
+            datos_dict.pop("id", None)
+
+            nuevo_registro = MailingModel(
+                **datos_dict
+            )
+
+            modelos_a_insertar.append(nuevo_registro)
+
+            if esquema_item.id_analisis is not None:
+                ids_analisis_nuevos.append(
+                    int(esquema_item.id_analisis)
+                )
+
+        except Exception as validation_error:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=(
+                    f"Error de validación en la fila "
+                    f"{row_idx} del CSV: "
+                    f"{str(validation_error)}"
+                ),
+            )
+
+    if not modelos_a_insertar:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "El archivo CSV está vacío "
+                "o no contiene filas válidas."
+            ),
+        )
+
+    try:
+
+        # Validar integridad referencial
+        analisis_existentes = (
+            db.query(AnalisisAguaModel.id)
+            .filter(
+                AnalisisAguaModel.id.in_(
+                    ids_analisis_nuevos
+                )
+            )
+            .all()
+        )
+
+        ids_existentes_set = {
+            int(a.id)
+            for a in analisis_existentes
+        }
+
+        ids_invalidos = (
+            set(ids_analisis_nuevos)
+            - ids_existentes_set
+        )
+
+        if ids_invalidos:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    "Los siguientes id_analisis "
+                    "no existen en la base de datos: "
+                    f"{sorted(list(ids_invalidos))}"
+                ),
+            )
+
+        # Insertar todos los registros
+        db.add_all(modelos_a_insertar)
+
+        db.commit()
+
+        return {
+            "status": "success",
+            "message": (
+                f"Se insertaron "
+                f"{len(modelos_a_insertar)} registros "
+                "correctamente en la tabla mailing."
+            ),
+            "count": len(modelos_a_insertar),
+        }
+
+    except HTTPException:
+        db.rollback()
+        raise
+
+    except Exception as e:
+        db.rollback()
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=(
+                "Error al insertar en la tabla de mailing "
+                f"desde CSV: {str(e)}"
+            ),
+        )
+
+  @staticmethod
+  async def update_mailing_queue_csv(
+      file: UploadFile,
+      db: Session
+  ) -> Dict[str, Any]:
+
+      print("========== INICIO ==========")
+      print("ARCHIVO:", file.filename)
+
+      content = await file.read()
+
+      print("BYTES:", len(content))
+      print("CONTENIDO RAW:")
+      print(content[:500])
+
+      buffer, delimiter = RilesService._obtener_buffer_y_delimitador(
+          content
+      )
+
+      print("DELIMITADOR:", repr(delimiter))
+      print("BUFFER:", buffer)
+
+      reader = csv.DictReader(
+          buffer,
+          delimiter=delimiter
+      )
+
+      print("COLUMNAS:", reader.fieldnames)
+
+      filas = list(reader)
+
+      print("CANTIDAD FILAS:", len(filas))
+      print("FILAS:", filas)
+
+      for row in filas:
+
+          print("ROW ORIGINAL:", row)
+
+          clean_row = {
+              key.strip(): value.strip() if value else None
+              for key, value in row.items()
+              if key
+          }
+
+          print("ROW LIMPIA:", clean_row)
+
+          id_analisis = int(
+              clean_row["id_analisis"]
+          )
+
+          registro = (
+              db.query(MailingModel)
+              .filter(
+                  MailingModel.id_analisis == id_analisis
+              )
+              .first()
+          )
+
+          print(
+              "REGISTRO ENCONTRADO:",
+              registro
+          )
+
+          if registro is None:
+              raise HTTPException(
+                  status_code=404,
+                  detail=f"No existe id_analisis={id_analisis}"
+              )
+
+          registro.status_local = clean_row["status_local"]
+          registro.status_sanitaria = clean_row["status_sanitaria"]
+
+          print(
+              "NUEVOS VALORES:",
+              registro.status_local,
+              registro.status_sanitaria
+          )
+
+      db.commit()
+
+      print("========== COMMIT OK ==========")
+
+      return {
+          "status": "success",
+          "message": "Datos actualizados correctamente"
+      }
 
   @staticmethod
   def delete_mailing_queue(db: Session) -> Dict[str, Any]:
@@ -620,7 +935,6 @@ class RilesService:
       columnas_model = [
         c.key
         for c in AnalisisAguaModel.__table__.columns
-        if c.key not in ("id",)
       ]
 
       writer.writerow(columnas_model)
@@ -699,7 +1013,139 @@ class RilesService:
 
     # Reutiliza el pipeline completo de persistencia, mailing y evaluación de reglas
     return RilesService.save_pdf_data(payload=payload, db=db)
+  
+  @staticmethod
+  async def update_pdf_data_csv(
+    file: UploadFile, db: Session
+  ) -> Dict[str, Any]:
+    if not file.filename.endswith(".csv"):
+      raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail="El archivo proporcionado debe ser un CSV.",
+      )
 
+    content = await file.read()
+
+    try:
+      decoded_content = content.decode("utf-8-sig")
+    except UnicodeDecodeError:
+      decoded_content = content.decode("latin-1")
+
+    buffer = StringIO(decoded_content)
+    reader = csv.DictReader(buffer, delimiter=";")
+
+    payload_map: Dict[int, AnalisisAguaSchema] = {}
+
+    for row_idx, row in enumerate(reader, start=2):
+      clean_row = {
+        key.strip(): value.strip() if value else None
+        for key, value in row.items()
+        if key
+      }
+      print(row)
+
+      try:
+        esquema_item = AnalisisAguaSchema(**clean_row)
+        
+        # Validar la presencia obligatoria del ID para realizar el UPDATE
+        if getattr(esquema_item, "id", None) is None:
+          raise ValueError("Falta el campo 'id' necesario para la actualización.")
+        
+        payload_map[esquema_item.id] = esquema_item
+      except Exception as validation_error:
+        raise HTTPException(
+          status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+          detail=f"Error de validación en la fila {row_idx} del CSV: {str(validation_error)}",
+        )
+
+    if not payload_map:
+      raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail="El archivo CSV se encuentra vacío o ningún registro contiene un ID válido.",
+      )
+
+    try:
+      # Cargar reglas de parámetros si se requiere reevaluar las mediciones actualizadas
+      reglas_db = db.query(ParametroModel).all()
+
+      # Obtener todos los registros existentes en una sola consulta
+      ids_a_actualizar = list(payload_map.keys())
+      registros_existentes = (
+        db.query(AnalisisAguaModel)
+        .filter(AnalisisAguaModel.id.in_(ids_a_actualizar))
+        .all()
+      )
+
+      existentes_dict = {reg.id: reg for reg in registros_existentes}
+
+      # Validar si hay IDs del CSV que no existen en la Base de Datos
+      ids_encontrados = set(existentes_dict.keys())
+      ids_faltantes = set(ids_a_actualizar) - ids_encontrados
+      
+      if ids_faltantes:
+        raise HTTPException(
+          status_code=status.HTTP_444_NOT_FOUND if hasattr(status, 'HTTP_444_NOT_FOUND') else status.HTTP_404_NOT_FOUND,
+          detail=f"Los siguientes IDs no existen en la base de datos: {sorted(list(ids_faltantes))}",
+        )
+
+      registros_actualizados = 0
+
+      for id_analisis, datos_nuevos in payload_map.items():
+        registro_db = existentes_dict[id_analisis]
+        datos_dict = datos_nuevos.model_dump(exclude_unset=True)
+
+        # Extraer campos que no pertenezcan directamente al modelo de análisis
+        contenido_b64 = datos_dict.pop("b64", None)
+        datos_dict.pop("id", None)
+
+        # Actualizar campos del modelo SQLAlchemy
+        for campo, valor in datos_dict.items():
+          if hasattr(registro_db, campo):
+            setattr(registro_db, campo, valor)
+
+        # Actualizar el archivo Base64 si viene presente en el CSV
+        if contenido_b64:
+          registro_b64 = (
+            db.query(File_b64_Model)
+            .filter(File_b64_Model.id_analisis == id_analisis)
+            .first()
+          )
+          if registro_b64:
+            registro_b64.b64 = contenido_b64
+          else:
+            db.add(File_b64_Model(id_analisis=id_analisis, b64=contenido_b64))
+
+        # Reevaluar reglas de negocio y eliminar evaluaciones obsoletas
+        if reglas_db:
+          db.query(EvaluacionParametrosModel).filter(
+            EvaluacionParametrosModel.id_analisis == id_analisis
+          ).delete(synchronize_session=False)
+          db.flush()
+
+          RilesService.procesar_evaluacion_analisis(
+            analisis=registro_db, reglas_db=reglas_db, db=db
+          )
+
+        registros_actualizados += 1
+
+      db.commit()
+
+      return {
+        "status": "success",
+        "message": f"Se actualizaron {registros_actualizados} registros correctamente.",
+        "count": registros_actualizados,
+      }
+
+    except HTTPException:
+      db.rollback()
+      raise
+    except Exception as e:
+      db.rollback()
+      raise HTTPException(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        detail=f"Error durante la actualización desde CSV: {str(e)}",
+      )
+  
   @staticmethod
   async def get_pdf_data_():
     pass
@@ -764,6 +1210,8 @@ class RilesService:
 
         resultado_final.append({
             "id_analisis": analisis.id,
+            "id_local": analisis.local_id,
+            "nombre_local": analisis.local_nombre,
             "status_local": status_local_val.upper(),
             "status_sanitaria": status_sanitaria_val.upper(),
             "tipo_monitoreo": tipo_monitoreo_val,

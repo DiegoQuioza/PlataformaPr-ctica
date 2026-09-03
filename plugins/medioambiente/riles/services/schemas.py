@@ -1,7 +1,8 @@
 from datetime import datetime
+import enum
 from typing import Any, Dict, Optional
 from enum import Enum
-from pydantic import BaseModel, field_validator, ConfigDict
+from pydantic import BaseModel, Field, field_validator, ConfigDict
 from typing import Optional
 from decimal import Decimal
 from .models import StoreModule, Formato, EstadoConvenio
@@ -15,6 +16,7 @@ class PDFDataItem(BaseModel):
 
 
 class AnalisisAguaSchema(BaseModel):
+  id: Optional[int] = None
   empresa: Optional[str] = None
   local_id: Optional[str] = None
   local_nombre: Optional[str] = None
@@ -182,3 +184,57 @@ class LocalMailSchema(LocalMailBase):
     "from_attributes": True
   }  # Sintaxis moderna para Pydantic v2
 
+class MailingStatus(str, enum.Enum):
+  PENDIENTE = "PENDIENTE"
+  ENVIADO = "ENVIADO"
+  ERROR = "ERROR"
+  # Agrega aquí los demás estados definidos en tu Enum si existen
+
+
+# --- ESQUEMA BASE ---
+class MailingBase(BaseModel):
+  id_analisis: int = Field(
+    ...,
+    description="Identificador del análisis de agua asociado",
+    gt=0,
+  )
+  status_local: Optional[MailingStatus] = Field(
+    default=MailingStatus.PENDIENTE,
+    description="Estado del envío al área local",
+  )
+  status_sanitaria: Optional[MailingStatus] = Field(
+    default=MailingStatus.PENDIENTE,
+    description="Estado del envío a la entidad sanitaria",
+  )
+
+
+# --- ESQUEMA DE CREACIÓN (POST) ---
+class MailingCreate(MailingBase):
+  pass
+
+
+# --- ESQUEMA DE ACTUALIZACIÓN (PUT/PATCH/CSV) ---
+class MailingUpdate(BaseModel):
+  id_analisis: Optional[int] = Field(
+    default=None,
+    description="Identificador opcional si se desea reasignar el análisis",
+    gt=0,
+  )
+  status_local: Optional[MailingStatus] = Field(
+    default=None,
+    description="Nuevo estado del envío local",
+  )
+  status_sanitaria: Optional[MailingStatus] = Field(
+    default=None,
+    description="Nuevo estado del envío a la sanitaria",
+  )
+
+
+# --- ESQUEMA DE LECTURA / RESPUESTA HTTP (GET) ---
+class MailingSchema(MailingBase):
+  id: int = Field(..., description="Identificador único del registro de mailing")
+
+  model_config = ConfigDict(
+    from_attributes=True,
+    use_enum_values=True,
+  )

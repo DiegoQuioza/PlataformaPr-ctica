@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block extra_css %}
-  <link rel="stylesheet" href="{{ url_for('static', path='./styles/main.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', path='./style/riles/main.css') }}">
 {% endblock %}
 {% block content %}
 <div class="riles-container">
@@ -9,12 +9,16 @@
       <h2>Gestión de Riles</h2>
     </div>
     <div class="list nav-bar">
-      <a href="/medioambiente/riles/inbox" class="nav">
+      <a href="/medioambiente/riles/" class="nav">
         <span class="material-symbols-outlined mi-icono">home</span>
+        Inicio
+      </a>
+      <a href="/medioambiente/riles/inbox" class="nav">
+        <span class="material-symbols-outlined mi-icono">inbox</span>
         Inbox
       </a>
       <a href="/medioambiente/riles/upload" class="nav">
-        <span class="material-symbols-outlined mi-icono">upload_file</span>
+        <span class="material-symbols-outlined mi-icono">search</span>
         Subir
       </a>
       <a href="/medioambiente/riles/send-mails" class="nav">
@@ -29,6 +33,26 @@
         <span class="material-symbols-outlined mi-icono">widget_width</span>
         Parámetros
       </a>
+      <a href="/medioambiente/riles/api/v1/export-pdf-data" class="nav">
+        <span class="material-symbols-outlined mi-icono">download</span>
+        Exportar Datos de Analisis a Excel
+      </a>
+      
+      <!-- Componente para importar archivo Excel/CSV -->
+      <form id="import-form" action="/medioambiente/riles/api/v1/import-pdf-data" method="POST" enctype="multipart/form-data" class="nav import-form">
+        <label for="import-file-input" class="import-label">
+          <span class="material-symbols-outlined mi-icono">upload_file</span>
+          <span>Importar Datos de Parámetros</span>
+        </label>
+        <input 
+          type="file" 
+          id="import-file-input" 
+          name="file" 
+          accept=".xlsx, .xls, .csv" 
+          onchange="document.getElementById('import-form').submit()" 
+          style="display: none;"
+        >
+      </form>
     </div>
   </div>
   <div class="Automation-list">
@@ -128,15 +152,14 @@
             const fecha_muestreo = new Date(element.fecha_muestreo);
             const mailingData = await mailingResponse.json();
             const toleranceData = await toleranceResponse.json();
-            const dateOptions = { year: 'numeric', month: 'long',day:"numeric" };
+            const dateOptions = { year: 'numeric', month: 'long', day: 'numeric' };
 
             // Extraer valores con respaldo seguro
             const analysisType = element.tipo_monitoreo;
             const status_localVal = mailingData[0]?.status_local ?? 'ENVIADO';
             const status_sanitariaVal = mailingData[0]?.status_sanitaria ?? 'ENVIADO';
             const tolerableVal = toleranceData[0]?.tolerable ?? 'N/A';
-            console.log(mailingData[0]?.status_local)
-            console.log(mailingData[0])            
+            
             let analysisTypeBadge = `
               <div class="badge analysis_item_type">
                 <div class="icon">
@@ -163,7 +186,6 @@
               `;
             }
 
-            // Usamos 'let' para permitir reasignar la variable
             let localMailingStatus = `
               <div class="badge analysis_item_mail_status"> 
                 <div class="icon">
@@ -173,7 +195,6 @@
                   <div class="label">Estado Envío a Local:</div>
                   ${status_localVal}
                 </div>
-                
               </div>
             `;
 

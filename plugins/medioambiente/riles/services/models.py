@@ -182,9 +182,9 @@ def calcular_estado_parametro(valor: float, regla: ParametroModel) -> int:
 
 
 class MailingStatus(str, enum.Enum):
-  PENDIENTE = "pendiente de envio"
-  ENVIADO = "enviado"
-  ERROR = "error"
+  PENDIENTE = "PENDIENTE"
+  ENVIADO = "ENVIADO"
+  ERROR = "ERROR"
 
 # 2. Modelo con el campo Enum
 class MailingModel(Base):

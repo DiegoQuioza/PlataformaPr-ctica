@@ -2,7 +2,7 @@ from fastapi import APIRouter, Request, HTTPException
 from fastapi.templating import Jinja2Templates
 import markdown
 import os
-from automations.generic.snapshot import mapear_directorio
+from plugins.generic.snapshot import mapear_directorio
 from paths import ROOT_DIR, TEMPLATES_DIR
 
 # Definimos el router

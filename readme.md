@@ -5,7 +5,7 @@ Para iniciar el entorno virtual primero hay que estar en la carpeta raíz.
 Osea, en la carpeta donde se encuentra este archivo. luego ejecutar este comando:
 
 ```bash
-  py -c "import paths; paths.get_venv_command()"
+  py -c "import paths; paths.print_venv_activation_command()"
 ```
 
 - Copia el resultado de la terminal 
