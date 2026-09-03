@@ -14,7 +14,7 @@ CURRENT_DIR = Path(__file__).resolve().parent
 
 from .envio_correos_config import FILE_TEMPLATE_DIR
 
-BASE_URL = "http://127.0.0.1:8000/medioambiente/riles/api/v1"
+BASE_URL = "/medioambiente/riles/api/v1"
 
 def load_template():
   with open(FILE_TEMPLATE_DIR, 'r', encoding='utf-8') as template:
@@ -80,12 +80,17 @@ def generate_mail(
           pass
 
 
-def run(data: dict, recipients: List[str]):
+def run(data: dict, recipients: List[str],type:str='local') :
 
   if not data:
     print("No se recibieron datos para generar el correo.")
 
-  subject = f"Analisis de Riles - Local: {data.get('local_nombre', '')} - CECO: {data.get('local_id', '')}"
+  if type == 'local':
+    # subject = f"RPM N° {data.get('local_rpm','').split('.')[0]} UNIMARC {data.get('local_nombre', '')} DE MES {data.get('fecha_muestreo', '').strftime('%m/%Y') if data.get('fecha_muestreo') else ''}"
+    subject = f"Analisis de Riles - Local: {data.get('local_nombre', '')} - CECO: {data.get('local_id', '')}"
+  else:
+    subject = f"RPM N° {data.get('local_rpm','').split('.')[0]} UNIMARC {data.get('local_nombre', '')} DE MES {data.get('fecha_muestreo', '').strftime('%m/%Y') if data.get('fecha_muestreo') else ''}"
+
   resultado = generate_mail(recipients, subject, data)
 
 

@@ -869,7 +869,7 @@ class RilesService:
         }
       
       print(data,recipients)
-      MailingService.run(data = data, recipients=recipients)
+      MailingService.run(data = data, recipients=recipients,type=type)
       
       # 2. Buscar si ya existe un registro de Mailing para este análisis
       mailing_record = (

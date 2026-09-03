@@ -20,6 +20,7 @@ if str(CURRENT_DIR) not in sys.path:
 tiempo_actual = datetime.now().strftime("%y%m%d%H%M%S")
 
 # Importar tus readers
+from utils.dtos import AnalisisAguaDTO
 from readers.agq_reader import agq_reader
 from readers.anam_reader import anam_reader
 from readers.ap_reader import ap_reader
@@ -76,6 +77,15 @@ LAB_CONFIG = {
 
 CURRENT_TIME = datetime.now().strftime("%y%m%d%H%M%S")
 
+def get_unrecognized_row(
+    filename: str, lab_name: str = "desconocido"
+) -> dict:
+  """Genera el diccionario base con todos los parámetros inicializados en None mediante AnalisisAguaDTO."""
+  dto = AnalisisAguaDTO(laboratorio=lab_name)
+  data = dto.to_dict()
+  data["name_archivo"] = filename
+  return data
+
 
 def process_pdf_bytes(file_bytes: bytes, filename: str = "documento.pdf") -> Optional[dict]:
   """
@@ -123,7 +133,7 @@ def process_pdf_bytes(file_bytes: bytes, filename: str = "documento.pdf") -> Opt
           row_data.update(result_dto)
           return row_data
 
-    return None
+    return get_unrecognized_row(filename, lab_name="desconocido")
 
   except Exception as e:
     print(f"Error al procesar el archivo {filename}: {e}")
