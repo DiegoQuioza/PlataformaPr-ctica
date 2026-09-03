@@ -125,54 +125,81 @@ class LocalMailService:
           status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
           detail=f"Error al eliminar el correo: {str(e)}",
       )
-
+  @staticmethod
+  def _detect_delimiter(sample_line: str) -> str:
+    """Detecta el delimitador óptimo entre (',', ';', '\t') analizando la densidad de ocurrencia en la primera línea del archivo."""
+    delimiters = [';', ',', '\t']
+    counts = {delim: sample_line.count(delim) for delim in delimiters}
+    best_delimiter = max(counts, key=counts.get)
+    return best_delimiter if counts[best_delimiter] > 0 else ','
+  
   @staticmethod
   def _parse_csv_file(file: UploadFile) -> List[Dict[str, str]]:
-    """Procesa un archivo CSV delimitado por comas (,) y retorna una lista de diccionarios válidos."""
-    if not file.filename.lower().endswith('.csv'):
+    """Procesa un archivo CSV delimitado por comas (,), punto y coma (;) o tabulaciones,
+
+    y retorna una lista de diccionarios válidos.
+    """
+    if not file.filename or not file.filename.lower().endswith('.csv'):
       raise HTTPException(
-        status_code=status.HTTP_400_BAD_REQUEST,
-        detail="El archivo debe tener extensión .csv",
-    )
+          status_code=status.HTTP_400_BAD_REQUEST,
+          detail="El archivo debe tener extensión .csv",
+      )
 
     try:
-      content = file.file.read().decode('utf-8-sig')
-      csv_reader = csv.DictReader(io.StringIO(content), delimiter=';')
+      content_bytes = file.file.read()
+      content = content_bytes.decode('utf-8-sig')
 
-      required_columns = {'id_local', 'mail', 'mail_type'}
+      if not content.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="El archivo CSV está vacío o corrupto.",
+        )
+
+      # Identificación del delimitador según la estructura de la cabecera
+      first_line = content.splitlines()[0]
+      delimiter = LocalMailService._detect_delimiter(first_line)
+
+      csv_reader = csv.DictReader(io.StringIO(content), delimiter=delimiter)
+
       if not csv_reader.fieldnames:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="El archivo CSV está vacío o corrupto.",
         )
 
-      fieldnames = {field.strip() for field in csv_reader.fieldnames if field}
-      if not required_columns.issubset(fieldnames):
+      # Normalización y saneamiento de cabeceras
+      raw_fieldnames = [field for field in csv_reader.fieldnames if field]
+      cleaned_fieldnames = {field.strip() for field in raw_fieldnames}
+      required_columns = {'id_local', 'mail', 'mail_type'}
+
+      if not required_columns.issubset(cleaned_fieldnames):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=(
-                "El CSV separado por comas debe contener las cabeceras:"
+                "El archivo CSV debe contener las cabeceras requeridas:"
                 " id_local, mail, mail_type"
             ),
         )
 
-      records = []
+      records: List[Dict[str, str]] = []
+
       for row in csv_reader:
+        # Procesa la fila eliminando espacios en blanco en claves y valores nulos
         clean_row = {
             key.strip(): value.strip()
             for key, value in row.items()
-            if key and value
+            if key is not None and value is not None
         }
 
-        if (
-            clean_row.get('id_local')
-            and clean_row.get('mail')
-            and clean_row.get('mail_type')
-        ):
+        id_local = clean_row.get('id_local', '')
+        mail = clean_row.get('mail', '')
+        mail_type = clean_row.get('mail_type', '')
+
+        if id_local and mail and mail_type:
           records.append({
-              'id_local': str(clean_row['id_local']),
-              'mail': str(clean_row['mail']).lower(),
-              'mail_type': str(clean_row['mail_type']).lower(),
+              'id_local': str(id_local),
+              'mail': str(mail).lower(),
+              'mail_type': str(mail_type).lower(),
           })
 
       return records

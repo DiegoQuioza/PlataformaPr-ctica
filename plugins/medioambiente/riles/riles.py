@@ -496,7 +496,7 @@ def bulk_insert_from_csv(
   return LocalMailService.bulk_insert_from_csv(db=db, file=file)
 
 
-@router.put(
+@router.post(
   "/mail/update-all-csv",
   summary="Reemplazo total desde CSV (Borra todo e inserta)",
   status_code=status.HTTP_200_OK

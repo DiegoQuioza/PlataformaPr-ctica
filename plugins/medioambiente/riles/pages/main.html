@@ -53,6 +53,24 @@
           style="display: none;"
         >
       </form>
+      <a href="/medioambiente/riles/mail/export-csv" class="nav">
+        <span class="material-symbols-outlined mi-icono">download</span>
+        Exportar Mails de Locales a Excel
+      </a>
+      <form id="import-form-mail" action="/medioambiente/riles/mail/update-all-csv" method="POST" enctype="multipart/form-data" class="nav import-form">
+        <label for="import-file-input-mail" class="import-label">
+          <span class="material-symbols-outlined mi-icono">upload_file</span>
+          <span>Modificar Mails de locales por Excel</span>
+        </label>
+        <input 
+          type="file" 
+          id="import-file-input-mail" 
+          name="file" 
+          accept=".xlsx, .xls, .csv" 
+          onchange="document.getElementById('import-form-mail').submit()" 
+          style="display: none;"
+        >
+      </form>
     </div>
   </div>
   <div class="Automation-list">
